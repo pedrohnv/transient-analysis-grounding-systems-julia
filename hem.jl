@@ -19,7 +19,7 @@ struct Electrode
     zi::Complex{Float64}
 end;
 
-function new_electrode(start_point, end_point, radius, internal_impedance)
+function new_electrode(start_point, end_point, radius, internal_impedance=0.0)
     return Electrode(start_point, end_point, (start_point + end_point)/2.0,
                      norm(start_point - end_point), radius, internal_impedance)
 end;
@@ -108,27 +108,59 @@ function electrode_grid(a, n::Int, b, m::Int, h, r, zi=0.0im)
 	return electrodes
 end;
 
-function integrand_double(sender::Electrode, receiver::Electrode, gamma::ComplexF64, t)
+function integrand_double(sender::Electrode, receiver::Electrode,
+	                      gamma::ComplexF64, t)
 	point_r = t[1]*(receiver.end_point - receiver.start_point) + receiver.start_point;
 	point_s = t[2]*(sender.end_point - sender.start_point) + sender.start_point;
 	r = norm(point_r - point_s);
-	return exp(-gamma*r)/r;
+	return exp(-gamma*r)/r
+end;
+
+function exp_logNf(sender::Electrode, receiver::Electrode, gamma::ComplexF64,
+			       t, simplified=false)
+	# mHEM
+	point_r = t[1]*(receiver.end_point - receiver.start_point) + receiver.start_point;
+	r1 = norm(point_r - sender.start_point);
+	r2 = norm(point_r - sender.end_point);
+	if simplified
+		exp_gr = 1.0;
+	else
+		rbar = norm(point_r - sender.middle_point);
+		exp_gr = exp(-gamma*rbar);
+	end
+	Nf = (r1 + r2 + sender.length)/(r1 + r2 - sender.length);
+    return exp_gr*log(Nf)
 end;
 
 function integral(sender::Electrode, receiver::Electrode, gamma::ComplexF64,
-	              maxevals=typemax(Int), atol=0, rtol=sqrt(eps(Float64)), norm=norm,
-				  initdiv=1)
-	#TODO other integration types; for now, only double is implemented in pure Julia
-	f(t) = integrand_double(sender, receiver, gamma, t);
-	intg, err = hcubature(f, [0., 0.], [1., 1.]; norm=norm, rtol=rtol, atol=atol,
-			 maxevals=maxevals, initdiv=initdiv);
-	return (intg*sender.length*receiver.length)
+	              intg_type=1, maxevals=typemax(Int), atol=0,
+				  rtol=sqrt(eps(Float64)), norm=norm, initdiv=1)
+    if (intg_type == 0)
+		r = norm(sender.middle_point - receiver.middle_point);
+		intg = exp(-gamma*r)/r;
+	elseif (intg_type == 1)
+		f(t) = integrand_double(sender, receiver, gamma, t);
+		intg, err = hcubature(f, [0., 0.], [1., 1.], norm=norm, rtol=rtol,
+		                      atol=atol, maxevals=maxevals, initdiv=initdiv);
+	elseif (intg_type == 2)
+		g(t) = exp_logNf(sender, receiver, gamma, t, false);
+		intg, err = hcubature(g, [0.], [1.], norm=norm, rtol=rtol, atol=atol,
+							  maxevals=maxevals, initdiv=initdiv);
+    elseif (intg_type == 3)
+	  	h(t) = exp_logNf(sender, receiver, gamma, t, true);
+	  	intg, err = hcubature(h, [0.], [1.], norm=norm, rtol=rtol, atol=atol,
+	  						  maxevals=maxevals, initdiv=initdiv);
+		rbar = norm(receiver.middle_point - sender.middle_point);
+		intg = exp(-gamma*rbar)*intg;
+	end
+	return (intg * sender.length * receiver.length)
 end;
 
-function calculate_impedances(electrodes, gamma, s, mur, kappa, max_eval=typemax(Int),
-                              req_abs_error=0, req_rel_error=sqrt(eps(Float64)),
-							  error_norm=norm, initdiv=1)
-	#TODO other integration types; for now, only double is implemented in pure Julia
+function calculate_impedances(electrodes, gamma, s, mur, kappa, intg_type=1,
+	 				          max_eval=typemax(Int), req_abs_error=0,
+							  req_rel_error=sqrt(eps(Float64)), error_norm=norm,
+							  initdiv=1)
+	#intg_type = 1: double integral, else closed formula: Ls*Lr*exp(-gamma*r)/r
 	iwu_4pi = s*mur*MU0/(FOUR_PI);
     one_4pik = 1.0/(FOUR_PI*kappa);
     ns = length(electrodes);
@@ -150,9 +182,10 @@ function calculate_impedances(electrodes, gamma, s, mur, kappa, max_eval=typemax
                 cost += k1*k2;
             end
             cost = abs(cost/(ls*lr));
-            intg = integral(electrodes[i], electrodes[k], gamma, max_eval,
-			                req_abs_error, req_rel_error,  error_norm, initdiv);
-            zl[k,i] = iwu_4pi*intg*cost;
+            intg = integral(electrodes[i], electrodes[k], gamma, intg_type,
+					        max_eval, req_abs_error, req_rel_error, error_norm,
+							initdiv);
+			zl[k,i] = iwu_4pi*intg*cost;
             zt[k,i] = one_4pik/(ls*lr)*intg;
 
             zl[i,k] = zl[k,i];
@@ -163,9 +196,10 @@ function calculate_impedances(electrodes, gamma, s, mur, kappa, max_eval=typemax
 end;
 
 function impedances_images(electrodes, images, zl, zt, gamma, s, mur, kappa,
-						   ref_l, ref_t, max_eval=typemax(Int),
+						   ref_l, ref_t, intg_type=1, max_eval=typemax(Int),
 						   req_abs_error=0, req_rel_error=sqrt(eps(Float64)),
 						   error_norm=norm, initdiv=1)
+    #intg_type = 1: double integral, else closed formula: Ls*Lr*exp(-gamma*r)/r)
 	iwu_4pi = s*mur*MU0/(FOUR_PI);
     one_4pik = 1.0/(FOUR_PI*kappa);
     ns = length(electrodes);
@@ -180,9 +214,10 @@ function impedances_images(electrodes, images, zl, zt, gamma, s, mur, kappa,
                 cost += k1*k2;
             end
             cost = abs(cost/(ls*lr));
-            intg = integral(electrodes[i], images[k], gamma, max_eval,
-			                req_abs_error, req_rel_error,  error_norm, initdiv);
-            zl[k,i] += ref_l*iwu_4pi*intg*cost;
+            intg = integral(electrodes[i], images[k], gamma, intg_type,
+					        max_eval, req_abs_error, req_rel_error, error_norm,
+							initdiv);
+			zl[k,i] += ref_l*iwu_4pi*intg*cost;
             zt[k,i] += ref_t*one_4pik/(ls*lr)*intg;
 
             zl[i,k] = zl[k,i];
