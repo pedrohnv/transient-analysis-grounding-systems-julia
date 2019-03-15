@@ -73,15 +73,15 @@ function simulate(gs::Int, nf::Int, intg_type=INTG_NONE)
 		jw = 1.0im*2*pi*freq[i];
 	    kappa = sigma1 + jw*epsr*eps0;
 	    k1 = sqrt(jw*mu0*kappa);
-	    zl, zt = calculate_impedances(electrodes, k1, jw, mur, kappa,
+	    zl, zt = calculate_impedances(electrodes, k1, jw, mur, kappa, intg_type,
 	                                  max_eval, req_abs_error, req_rel_error,
-	                                  error_norm, intg_type);
+	                                  error_norm);
 		kappa_air = jw*eps0;
 		ref_t = (kappa - kappa_air)/(kappa + kappa_air);
 		ref_l = ref_t;
 		zl, zt = impedances_images(electrodes, images, zl, zt, k1, jw, mur, kappa,
-								   ref_l, ref_t, max_eval, req_abs_error,
-								   req_rel_error, error_norm, intg_type)
+								   ref_l, ref_t, intg_type, max_eval, req_abs_error,
+								   req_rel_error, error_norm)
 	    yn = mAT*inv(zt)*mA + mBT*inv(zl)*mB;
 		vn = yn\exci;
 	    zh[i] = vn[inj_node];
