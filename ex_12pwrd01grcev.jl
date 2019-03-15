@@ -13,7 +13,7 @@ using Plots
 
 include("hem.jl");
 
-function simulate(gs::Int, nf::Int, intg_type=0)
+function simulate(gs::Int, nf::Int, intg_type=INTG_NONE)
 	## Parameters
 	# Soil
 	mu0 = pi*4e-7;
@@ -95,7 +95,7 @@ zh = zeros(ComplexF64, (nf, 5)); #Julia is Column Major.
 i = 1;
 tot_time = @timed for gs in [10, 20, 30, 60, 120]
 	println("gs = ", gs)
-	global zh[:,i] = @time simulate(gs, nf, 0);
+	global zh[:,i] = @time simulate(gs, nf, INTG_NONE);
 	global i += 1;
 end;
 println("total elapsed time: ", tot_time[2]/60, " min")

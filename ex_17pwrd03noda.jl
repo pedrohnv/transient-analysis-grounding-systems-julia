@@ -35,7 +35,7 @@ Put in a function as execution in global scope has poor performance.
 The computation becomes really fast, but the pre-compiling Julia does
 takes a lot of time...
 =#
-function simulate(intg_type=1)
+function simulate(intg_type=INTG_DOUBLE)
 	## Parameters
 	mu0 = pi*4e-7;
 	mur = 1;
@@ -143,7 +143,7 @@ function simulate(intg_type=1)
 	    k1 = sqrt(jw*mu0*kappa);
 	    zl, zt = calculate_impedances(electrodes, k1, jw, mur, kappa, intg_type,
 	                                  max_eval, req_abs_error, req_rel_error,
-	                                  error_norm, intg_type);
+	                                  error_norm);
 		kappa_cu = sigma_cu + jw*epsr*eps0;
 		ref_t = (kappa - kappa_cu)/(kappa + kappa_cu);
 		ref_l = ref_t;
@@ -180,7 +180,7 @@ function simulate(intg_type=1)
 	return outv, outi, source, vout_art, iout_art, t
 end;
 
-outv, outi, source, vout_art, iout_art, t = @time simulate(0);
+outv, outi, source, vout_art, iout_art, t = @time simulate(INTG_DOUBLE);
 plotly()
 #pyplot()
 display(plot([t*1e9, source.t*1e9, vout_art.t], [outv, source.V, vout_art.V],

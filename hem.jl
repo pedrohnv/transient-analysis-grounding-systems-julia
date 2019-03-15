@@ -10,6 +10,13 @@ FOUR_PI = 12.56637061435917;
 MU0 = 1.256637061435917e-6; #permeability vac.
 EPS0 = 8.854187817620e-12; #permittivity vac.
 
+@enum INTEGRATION_TYPE begin
+	INTG_NONE = 0
+	INTG_DOUBLE = 1
+	INTG_EXP_LOGNF = 2
+	INTG_LOGNF = 3
+end
+
 struct Electrode
     start_point::Array{Float64,1}
     end_point::Array{Float64,1}
@@ -133,20 +140,20 @@ function exp_logNf(sender::Electrode, receiver::Electrode, gamma::ComplexF64,
 end;
 
 function integral(sender::Electrode, receiver::Electrode, gamma::ComplexF64,
-	              intg_type=1, maxevals=typemax(Int), atol=0,
-				  rtol=sqrt(eps(Float64)), norm=norm, initdiv=1)
-    if (intg_type == 0)
+	              intg_type::INTEGRATION_TYPE=INTG_NONE, maxevals=typemax(Int),
+				  atol=0, rtol=sqrt(eps(Float64)), norm=norm, initdiv=1)
+    if (intg_type == INTG_NONE)
 		r = norm(sender.middle_point - receiver.middle_point);
 		intg = exp(-gamma*r)/r;
-	elseif (intg_type == 1)
+	elseif (intg_type == INTG_DOUBLE)
 		f(t) = integrand_double(sender, receiver, gamma, t);
 		intg, err = hcubature(f, [0., 0.], [1., 1.], norm=norm, rtol=rtol,
 		                      atol=atol, maxevals=maxevals, initdiv=initdiv);
-	elseif (intg_type == 2)
+	elseif (intg_type == INTG_EXP_LOGNF)
 		g(t) = exp_logNf(sender, receiver, gamma, t, false);
 		intg, err = hcubature(g, [0.], [1.], norm=norm, rtol=rtol, atol=atol,
 							  maxevals=maxevals, initdiv=initdiv);
-    elseif (intg_type == 3)
+    elseif (intg_type == INTG_LOGNF)
 	  	h(t) = exp_logNf(sender, receiver, gamma, t, true);
 	  	intg, err = hcubature(h, [0.], [1.], norm=norm, rtol=rtol, atol=atol,
 	  						  maxevals=maxevals, initdiv=initdiv);
@@ -156,11 +163,11 @@ function integral(sender::Electrode, receiver::Electrode, gamma::ComplexF64,
 	return (intg * sender.length * receiver.length)
 end;
 
-function calculate_impedances(electrodes, gamma, s, mur, kappa, intg_type=1,
+function calculate_impedances(electrodes, gamma, s, mur, kappa,
+							  intg_type::INTEGRATION_TYPE=INTG_NONE,
 	 				          max_eval=typemax(Int), req_abs_error=0,
 							  req_rel_error=sqrt(eps(Float64)), error_norm=norm,
 							  initdiv=1)
-	#intg_type = 1: double integral, else closed formula: Ls*Lr*exp(-gamma*r)/r
 	iwu_4pi = s*mur*MU0/(FOUR_PI);
     one_4pik = 1.0/(FOUR_PI*kappa);
     ns = length(electrodes);
@@ -196,10 +203,10 @@ function calculate_impedances(electrodes, gamma, s, mur, kappa, intg_type=1,
 end;
 
 function impedances_images(electrodes, images, zl, zt, gamma, s, mur, kappa,
-						   ref_l, ref_t, intg_type=1, max_eval=typemax(Int),
-						   req_abs_error=0, req_rel_error=sqrt(eps(Float64)),
-						   error_norm=norm, initdiv=1)
-    #intg_type = 1: double integral, else closed formula: Ls*Lr*exp(-gamma*r)/r)
+						   ref_l, ref_t, intg_type::INTEGRATION_TYPE=INTG_NONE,
+						   max_eval=typemax(Int), req_abs_error=0,
+						   req_rel_error=sqrt(eps(Float64)), error_norm=norm,
+						   initdiv=1)
 	iwu_4pi = s*mur*MU0/(FOUR_PI);
     one_4pik = 1.0/(FOUR_PI*kappa);
     ns = length(electrodes);
