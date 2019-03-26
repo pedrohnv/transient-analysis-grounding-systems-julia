@@ -157,7 +157,7 @@ function simulate(intg_type=INTG_DOUBLE)
 	end;
 
 	## Time response
-	outlow = map(i -> vout[:,1][Int(i+1)]*sigma(i), kk);
+	outlow = map(i -> vout[Int(i+1), 1]sigma(i), kk);
 	upperhalf = reverse(conj(outlow));
 	pop!(upperhalf);
 	lowerhalf = outlow;
@@ -168,7 +168,7 @@ function simulate(intg_type=INTG_DOUBLE)
 	outv = map(i -> exp(sc*t[i])/dt*f[i], 1:length(t));
 	# ======
 	iout = -(vout[:,1] - ent_freq)*gf;
-	outlow = map(i -> iout[:,1][Int(i+1)]*sigma(i), kk);
+	outlow = map(i -> iout[Int(i+1),1]sigma(i), kk);
 	upperhalf = reverse(conj(outlow));
 	pop!(upperhalf);
 	lowerhalf = outlow;

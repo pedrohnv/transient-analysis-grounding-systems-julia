@@ -40,8 +40,8 @@ function simulate(gs::Int, nf::Int, intg_type=INTG_NONE)
 	l = gs;
 	n = Int(gs/10);
 	elecs = electrode_grid(l, n, l, n, h, r);
-	electrodes, nodes =  seg_electrode_list(elecs, frac);
-	num_electrodes= ns = length(electrodes)
+	electrodes, nodes = seg_electrode_list(elecs, frac);
+	num_electrodes = ns = length(electrodes)
 	num_nodes = size(nodes)[1]
 	inj_node = matchrow([0.,0.,h], nodes)
 
@@ -81,7 +81,7 @@ function simulate(gs::Int, nf::Int, intg_type=INTG_NONE)
 		ref_l = ref_t;
 		zl, zt = impedances_images(electrodes, images, zl, zt, k1, jw, mur, kappa,
 								   ref_l, ref_t, intg_type, max_eval, req_abs_error,
-								   req_rel_error, error_norm)
+								   req_rel_error, error_norm);
 	    yn = mAT*inv(zt)*mA + mBT*inv(zl)*mB;
 		vn = yn\exci;
 	    zh[i] = vn[inj_node];
@@ -89,13 +89,14 @@ function simulate(gs::Int, nf::Int, intg_type=INTG_NONE)
 	return zh
 end;
 
+intg_type = INTG_DOUBLE;
 nf = 150;
 freq = exp10.(range(2, stop=6.4, length=nf)); #logspace
 zh = zeros(ComplexF64, (nf, 5)); #Julia is Column Major.
 i = 1;
 tot_time = @timed for gs in [10, 20, 30, 60, 120]
 	println("gs = ", gs)
-	global zh[:,i] = @time simulate(gs, nf, INTG_NONE);
+	global zh[:,i] = @time simulate(gs, nf, intg_type);
 	global i += 1;
 end;
 println("total elapsed time: ", tot_time[2]/60, " min")
