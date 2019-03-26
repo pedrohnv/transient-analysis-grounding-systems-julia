@@ -142,25 +142,29 @@ end;
 function integral(sender::Electrode, receiver::Electrode, gamma::ComplexF64,
 	              intg_type::INTEGRATION_TYPE=INTG_NONE, maxevals=typemax(Int),
 				  atol=0, rtol=sqrt(eps(Float64)), norm=norm, initdiv=1)
-    if (intg_type == INTG_NONE)
+    ls = sender.length;
+	lr = receiver.length;
+	if (intg_type == INTG_NONE)
 		r = norm(sender.middle_point - receiver.middle_point);
-		intg = exp(-gamma*r)/r;
+		intg = exp(-gamma*r)/r*ls*lr;
 	elseif (intg_type == INTG_DOUBLE)
 		f(t) = integrand_double(sender, receiver, gamma, t);
 		intg, err = hcubature(f, [0., 0.], [1., 1.], norm=norm, rtol=rtol,
 		                      atol=atol, maxevals=maxevals, initdiv=initdiv);
+		intg = intg*ls*lr;
 	elseif (intg_type == INTG_EXP_LOGNF)
 		g(t) = exp_logNf(sender, receiver, gamma, t, false);
 		intg, err = hcubature(g, [0.], [1.], norm=norm, rtol=rtol, atol=atol,
 							  maxevals=maxevals, initdiv=initdiv);
+		intg = intg*ls;
     elseif (intg_type == INTG_LOGNF)
 	  	h(t) = exp_logNf(sender, receiver, gamma, t, true);
 	  	intg, err = hcubature(h, [0.], [1.], norm=norm, rtol=rtol, atol=atol,
 	  						  maxevals=maxevals, initdiv=initdiv);
 		rbar = norm(receiver.middle_point - sender.middle_point);
-		intg = exp(-gamma*rbar)*intg;
+		intg = intg*exp(-gamma*rbar)*ls;
 	end
-	return (intg * sender.length * receiver.length)
+	return intg
 end;
 
 function calculate_impedances(electrodes, gamma, s, mur, kappa,
@@ -173,20 +177,23 @@ function calculate_impedances(electrodes, gamma, s, mur, kappa,
     ns = length(electrodes);
     zl = zeros(Complex{Float64}, (ns,ns));
     zt = zeros(Complex{Float64}, (ns,ns));
+	k1 = [0., 0., 0.];
 	for i=1:ns
 		ls = electrodes[i].length;
-		k1 = electrodes[i].radius/ls;
-		k2 = sqrt(1.0 + k1*k1);
-		cost = 2.0*(log( (k2 + 1.)/k1 ) - k2 + k1);
+		k1[1] = electrodes[i].radius/ls;
+		k2 = sqrt(1.0 + k1[1]*k1[1]);
+		cost = 2.0*(log( (k2 + 1.)/k1[1] ) - k2 + k1[1]);
 		zl[i,i] = iwu_4pi*ls*cost + electrodes[i].zi;
 		zt[i,i] = one_4pik/ls*cost;
+		for m=1:3
+			k1[m] = (electrodes[i].end_point[m] - electrodes[i].start_point[m]);
+		end
 		for k=(i+1):ns
             lr = electrodes[k].length;
             cost = 0.0;
             for m=1:3
-                k1 = (electrodes[i].end_point[m] - electrodes[i].start_point[m]);
                 k2 = (electrodes[k].end_point[m] - electrodes[k].start_point[m]);
-                cost += k1*k2;
+                cost += k1[m]*k2;
             end
             cost = abs(cost/(ls*lr));
             intg = integral(electrodes[i], electrodes[k], gamma, intg_type,
@@ -210,15 +217,18 @@ function impedances_images(electrodes, images, zl, zt, gamma, s, mur, kappa,
 	iwu_4pi = s*mur*MU0/(FOUR_PI);
     one_4pik = 1.0/(FOUR_PI*kappa);
     ns = length(electrodes);
+	k1= [0., 0., 0.];
 	for i=1:ns
 		ls = electrodes[i].length;
+		for m=1:3
+			k1[m] = (electrodes[i].end_point[m] - electrodes[i].start_point[m]);
+		end
 		for k=i:ns
             lr = images[k].length;
             cost = 0.0;
             for m=1:3
-                k1 = (electrodes[i].end_point[m] - electrodes[i].start_point[m]);
                 k2 = (images[k].end_point[m] - images[k].start_point[m]);
-                cost += k1*k2;
+                cost += k1[m]*k2;
             end
             cost = abs(cost/(ls*lr));
             intg = integral(electrodes[i], images[k], gamma, intg_type,
