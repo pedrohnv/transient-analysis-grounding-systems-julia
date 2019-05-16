@@ -1,6 +1,6 @@
 # Julia_HEM
 Pure Julia implementation of the Hybrid Electromagnetic Model. This is a prototype.
 
-Refer to https://github.com/pedrohnv/HP_HEM for a C, high performance version.
+Refer to https://github.com/pedrohnv/hp_hem for a C, high performance version.
 
 For the Julia interface to the HP_HEM, go to https://github.com/pedrohnv/hp_hem_julia
