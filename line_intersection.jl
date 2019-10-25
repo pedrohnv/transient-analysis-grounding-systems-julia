@@ -5,6 +5,7 @@ Script to create a set of lines and break them at their intersection points.
 Author: Pedro Henrique Nascimento Vieira
 """
 using Plots
+using LinearAlgebra
 
 struct Point
 	x::Real
@@ -175,14 +176,39 @@ function create_grid()
 	return break_intersections(lines)
 end
 
-function main(nodes=false)
+function segment_lines(lines, lmax)
+    seg_lines = [Line(Point(0,0), Point(0,0))]
+    for li in lines
+        x0 = li.start_point.x
+        y0 = li.start_point.y
+        x1 = li.end_point.x
+        y1 = li.end_point.y
+        v = [x1 - x0, y1 - y0]
+        L = norm(v)
+        n = Int(cld(L, lmax))
+        dl = v./n
+        for k = 0:(n-1)
+            p0 = [x0, y0] + k.*dl;
+            p1 = p0 .+ dl;
+            push!(seg_lines, Line(Point(p0[1], p0[2]), Point(p1[1], p1[2])))
+        end
+    end
+    return seg_lines[2:end]
+end
+
+function main(nodes, lmax)
     lines = create_grid()
-    fig = plot_lines(lines, nodes)
+	seg_lines = segment_lines(lines, lmax)
+	if nodes
+    	fig = plot_lines(seg_lines, nodes)
+	else
+    	fig = plot_lines(lines, nodes)
 	savefig(fig, "grid.png")
     r = 10e-3  # radius
     z = 0.0
+    println("number of lines = ", length(seg_lines))
 	io = open("grid.txt", "w")
-	for li in lines
+	for li in seg_lines
         x0 = li.start_point.x
 		y0 = li.start_point.y
 		x1 = li.end_point.x
@@ -195,5 +221,5 @@ function main(nodes=false)
     return lines, fig
 end
 
-# 23.202925 seconds (349.86 M allocations: 6.792 GiB, 5.16% gc time)
-@time lines, fig = main(false);
+# if true: 596.712559 seconds; else: 24.493915 seconds
+@time lines, fig = main(false, 0.2);
