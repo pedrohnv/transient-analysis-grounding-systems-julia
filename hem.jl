@@ -99,10 +99,13 @@ end
 """
 Calculates the soil parameters σ(s) and ε(s) based on the Alipio-Visacro soil
 model [1].
+
     σ = σ0 + σ0 × h(σ0) × (s / (1 MHz))^g
+
     εr = ε∞' / ε0 + tan(π g / 2) × 1e-3 / (2π ε0 (1 MHz)^g) × σ0 × h(σ0) s^(g - 1)
 
 Recommended values of h(σ0), g and ε∞'/ε0 are given in Fig. 8 of [1]:
+
 | Results                  |          h(σ0)             |    g   |  ε∞'/ε0  |
 |:-------------------------|:--------------------------:|:------:|:--------:|
 | mean                     |  1.26 × (1000 σ0)^(-0.73)  |  0.54  |    12    |
