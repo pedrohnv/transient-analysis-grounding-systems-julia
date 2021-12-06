@@ -1,10 +1,13 @@
 using LinearAlgebra;
 using HCubature;
 
+
 const TWO_PI = 6.283185307179586;
 const FOUR_PI = 12.56637061435917;
 const MU0 = 1.256637061435917e-6; #permeability vac.
 const EPS0 = 8.854187817620e-12; #permittivity vac.
+
+## HEM
 
 """
 Defines which integration (and simplification thereof) to do.
@@ -25,24 +28,27 @@ INTG_MHEM: calculates the integral of the modified HEM.
 	INTG_PADE = 6
 end
 
+
+""" Defines a conductor segment. """
 mutable struct Electrode
-	""" Defines a conductor segment. """
     start_point::Array{Float64,1}
     end_point::Array{Float64,1}
     middle_point::Array{Float64,1}
     length::Float64
     radius::Float64
-end;
+end
 
+
+""" Creates a conductor segment. """
 function new_electrode(start_point, end_point, radius)
-	""" Creates a conductor segment. """
-    return Electrode(start_point, end_point, (start_point + end_point)/2.0,
+	return Electrode(start_point, end_point, (start_point + end_point)/2.0,
                      norm(start_point - end_point), radius)
-end;
+end
 
+
+""" Segments a conductor."""
 function segment_electrode(electrode::Electrode, num_segments::Int)
-	""" Segments a conductor. """
-    nn = num_segments + 1;
+	nn = num_segments + 1;
     nodes = Array{Float64}(undef, nn, 3); # FIXME transpose all nodes
     startp = Array{Float64,1}(undef, 3);
     endp = Array{Float64,1}(undef, 3);
@@ -59,24 +65,26 @@ function segment_electrode(electrode::Electrode, num_segments::Int)
         segments[k] = new_electrode(nodes[k,:], nodes[k+1,:], electrode.radius);
     end
     return segments, nodes
-end;
+end
 
+
+"""
+Returns the row in B that matches a. If there is no match, nothing is returned.
+taken and modified from https://stackoverflow.com/a/32740306/6152534
+"""
 function matchrow(a, B, atol=1e-9, rtol=0)
-	"""
-	Returns the row in B that matches a. If there is no match, nothing is returned.
-    taken and modified from https://stackoverflow.com/a/32740306/6152534
-	"""
-    findfirst(i -> all(j -> isapprox(a[j], B[i,j], atol=atol, rtol=rtol),
+	findfirst(i -> all(j -> isapprox(a[j], B[i,j], atol=atol, rtol=rtol),
 			           1:size(B,2)), 1:size(B,1))
 end
 
+
+"""
+Segments a list of conductors such that they end up having at most 'L/frac'
+length.
+Return a list of the segmented conductors and their nodes.
+"""
 function seg_electrode_list(electrodes, frac)
-	"""
-	Segments a list of conductors such that they end up having at most 'L/frac'
-	length.
-	Return a list of the segmented conductors and their nodes.
-	"""
-    num_elec = 0; #after segmentation
+	num_elec = 0; #after segmentation
     for i=1:length(electrodes)
         #TODO store in array to avoid repeated calculations
         num_elec += Int(ceil(electrodes[i].length/frac));
@@ -103,40 +111,54 @@ function seg_electrode_list(electrodes, frac)
         end
     end
     return elecs, nodes
-end;
+end
 
+
+"""
+Integrand that appears in the double integral between two electrodes.
+    `exp(-γ * r) / r`
+"""
 function integrand_double(sender::Electrode, receiver::Electrode, gamma, t)
 	point_s = t[1]*(sender.end_point - sender.start_point) + receiver.start_point;
 	point_r = t[2]*(receiver.end_point - receiver.start_point) + sender.start_point;
 	r = norm(point_s - point_r);
 	return exp(-gamma*r)/r
-end;
+end
 
+
+"""
+Integrand that appears in the single integral between a sender electrode and
+the middle point of a receiver electrode.
+    `exp(-γ * r) / r`
+"""
 function integrand_single(sender::Electrode, receiver::Electrode, gamma, t)
 	point_s = t[1]*(sender.end_point - sender.start_point) + receiver.start_point;
 	r = norm(point_s - receiver.middle_point);
 	return exp(-gamma*r)/r
-end;
+end
 
+
+"""Modified HEM integrand."""
 function logNf(sender::Electrode, receiver::Electrode, gamma, t)
-	""" Modified HEM integrand. """
 	point_r = t[1]*(receiver.end_point - receiver.start_point) + receiver.start_point;
 	r1 = norm(point_r - sender.start_point);
 	r2 = norm(point_r - sender.end_point);
 	Nf = (r1 + r2 + sender.length)/(r1 + r2 - sender.length);
     return logabs(Nf)
-end;
+end
 
+
+"""Integral formula for when γ*r -> 0 and sender -> receiver."""
 function self_integral(sender)
-	""" Integral formula for when γr -> 0 and sender -> receiver. """
 	L = sender.length;
 	b = sender.radius;
 	k = sqrt(b^2 + L^2)
 	return 2*(b - k) + L*log(1 + 2L*(L + k)/b^2)
 end
 
+
+"""Calculates 'log( abs(x) )' limiting the result, if needed."""
 function logabs(x)
-	""" Calculates 'log( abs(x) )' limiting the result, if needed. """
 	logabs_eps = -36.04365338911715; # = log(eps())
 	absx = abs(x)
 	if absx < eps()
@@ -148,6 +170,8 @@ function logabs(x)
 	end
 end
 
+
+"""Integral between two electrodes by MacLaurin Series."""
 function maclaurin(sender, receiver, gamma, nmax::Int, rtol)
     xs0 = sender.start_point[1];
     xs1 = sender.end_point[1];
@@ -174,6 +198,8 @@ function maclaurin(sender, receiver, gamma, nmax::Int, rtol)
     return a
 end
 
+
+"""Integral between two electrodes by Pade Approximant."""
 function pade(sender, receiver, gamma)
 	xs0 = sender.start_point[1];
     xs1 = sender.end_point[1];
@@ -197,6 +223,8 @@ function pade(sender, receiver, gamma)
     return -(a + 2b)
 end
 
+
+"""Performs the integral between two electrodes with customizable parameters."""
 function integral(sender::Electrode, receiver::Electrode, gamma,
 	              intg_type=INTG_DOUBLE, max_eval=typemax(Int),
 				  atol=0, rtol=sqrt(eps(Float64)), error_norm=norm, initdiv=1)
@@ -230,17 +258,18 @@ function integral(sender::Electrode, receiver::Electrode, gamma,
 		throw(ArgumentError(msg))
 	end
 	return intg
-end;
+end
 
+
+"""
+Calculates the impedance matrics ZL and ZT through in-place modification
+of them.
+"""
 function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
                                max_eval=typemax(Int), atol=0,
                                rtol=sqrt(eps(Float64)), error_norm=norm,
                                intg_type=INTG_DOUBLE, initdiv=1)
-	"""
-	Calculates the impedance matrics ZL and ZT through in-place modification
-	of them.
-	"""
-    iwu_4pi = s*mur*MU0/(FOUR_PI);
+	iwu_4pi = s*mur*MU0/(FOUR_PI);
     one_4pik = 1.0/(FOUR_PI*kappa);
     ns = length(electrodes);
     for i = 1:ns
@@ -270,31 +299,33 @@ function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
         end
     end
     return zl, zt
-end;
+end
 
+
+"""
+Calculates the impedance matrics ZL and ZT.
+"""
 function calculate_impedances(electrodes, gamma, s, mur, kappa,
                               max_eval=typemax(Int), atol=0,
                               rtol=sqrt(eps(Float64)), error_norm=norm,
                               intg_type=INTG_DOUBLE, initdiv=1)
-    """
-	Calculates the impedance matrics ZL and ZT.
-	"""
-	ns = length(electrodes);
+    ns = length(electrodes);
     zl = Array{ComplexF64}(undef, (ns,ns));
     zt = Array{ComplexF64}(undef, (ns,ns));
 	calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
 	                      max_eval, atol, rtol, error_norm, intg_type, initdiv);
     return zl, zt
-end;
+end
 
+
+"""
+Adds the effect of the images in the impedance matrics ZL and ZT through
+in-place modification of them.
+"""
 function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
                             ref_l, ref_t, max_eval=typemax(Int), atol=0,
                             rtol=sqrt(eps(Float64)), error_norm=norm,
                             intg_type=INTG_DOUBLE, initdiv=1)
-	"""
-	Adds the effect of the images in the impedance matrics ZL and ZT through
-	in-place modification of them.
-	"""
 	iwu_4pi = s*mur*MU0/(FOUR_PI)*ref_l;
 	one_4pik = 1.0/(FOUR_PI*kappa)*ref_t;
     ns = length(electrodes);
@@ -313,15 +344,14 @@ function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
             zti[i,k] = zti[k,i];
         end
     end
-end;
+end
 
+
+"""Adds the effect of the images in the impedance matrics ZL and ZT."""
 function impedances_images(electrodes, images, gamma, s, mur, kappa,
                            ref_l, ref_t, max_eval=typemax(Int), atol=0,
                            rtol=sqrt(eps(Float64)), error_norm=norm,
                            intg_type=INTG_DOUBLE, initdiv=1)
-	"""
-	Adds the effect of the images in the impedance matrics ZL and ZT.
-	"""
 	ns = length(electrodes);
 	zli = zeros(ComplexF64, ns, ns);
 	zti = zeros(ComplexF64, ns, ns);
@@ -329,13 +359,14 @@ function impedances_images(electrodes, images, gamma, s, mur, kappa,
 	                   ref_l, ref_t, max_eval, atol, rtol,
 					   error_norm, intg_type, initdiv);
     return zli, zti
-end;
+end
 
+
+"""
+Builds incidence matrices A and B for calculating the nodal admittance
+matrix: YN = AT*inv(ZL)*A + BT*inv(ZT)*B
+"""
 function incidence(electrodes, nodes; atol=0, rtol=1e-4)
-    """
-	Builds incidence matrices A and B for calculating the nodal admittance
-	matrix: YN = AT*inv(ZL)*A + BT*inv(ZT)*B
-	"""
     ns = length(electrodes);
     nn = size(nodes)[1];
     a = zeros(ComplexF64, (ns,nn));
@@ -354,15 +385,16 @@ function incidence(electrodes, nodes; atol=0, rtol=1e-4)
         end
     end
     return a, b
-end;
+end
 
+
+"""
+Builds the Nodal Admittance matrix YN using low level BLAS and LAPACK for
+in-place modification of the inputs YN, ZL and ZT.
+An auxiliary 'C' matrix of size (num_electrodes, num_nodes) can be provided
+to store the intermediate results.
+"""
 function admittance!(yn, zl, zt, a, b, c=nothing)
-	"""
-	Builds the Nodal Admittance matrix using low level BLAS and LAPACK for
-	in-place modification of the inputs yn, zl and zt.
-	An auxiliary 'c' matrix of size (ns, nn) can be provided to store the
-	intermediate results.
-	"""
 	ns, nn = size(a);
 	if c == nothing
 		c = Array{ComplexF64}(undef, (ns, nn));
@@ -378,18 +410,20 @@ function admittance!(yn, zl, zt, a, b, c=nothing)
 	return yn
 end
 
+
+""" Builds the Nodal Admittance matrix. """
 function admittance(zl, zt, a, b)
-	""" Builds the Nodal Admittance matrix. """
 	ns, nn = size(a);
 	yn = Array{ComplexF64}(undef, (nn, nn));
 	return admittance!(yn, copy(zl), copy(zt), a, b)
 end
 
+
+"""
+Builds the Global Immittance matrix using low level BLAS and LAPACK for
+in-place modification of the input wg.
+"""
 function immittance!(wg, zl, zt, a, b, ye=nothing)
-	"""
-	Builds the Global Immittance matrix using low level BLAS and LAPACK for
-	in-place modification of the input wg.
-	"""
 	ns, nn = size(a);
 	m0 = zeros(ComplexF64, ns, ns);
 	if ye == nothing
@@ -412,46 +446,49 @@ function immittance!(wg, zl, zt, a, b, ye=nothing)
 	return wg
 end
 
+
+"""Builds the Global Immittance matrix."""
 function immittance(zl, zt, a, b, ye=nothing)
-	""" Builds the Global Immittance matrix. """
 	ns, nn = size(a);
 	m = 2ns + nn;
 	wg = Array{ComplexF64}(undef, m, m);
 	return immittance!(wg, zl, zt, a, b, ye)
 end
 
+
 ## Grid specialized routines
+
+"""
+Strutcture to represent a rectangular grid to be used in specialized routines.
+This grid has dimensions (Lx*Ly), a total of (before segmentation)
+	nv = (vx*vy)
+vertices and
+	ne = vy*(vx - 1) + vx*(vy - 1)
+edges. Each edge is divided into N segments so that the total number of nodes
+after segmentation is
+	nn = vx*vy + vx*(vy - 1)*(Ny - 1) + vy*(vx - 1)*(Nx - 1)
+and the total number of segments is
+	ns = Nx*vx*(vy - 1) + Ny*vy*(vx - 1)
+
+1           vx
+o---o---o---o  1
+|   |   |   |
+o---o---o---o
+|   |   |   |
+o---o---o---o  vy
+
+|<-- Lx --->|
+
+vertices_x : vx, number of vertices in the X direction;
+vertices_y : vy, number of vertices in the Y direction;
+length_x : Lx, total grid length in the X direction;
+length_y : Ly, total grid length in the Y direction;
+edge_segments_x : Nx, number of segments that each edge in the X direction has;
+edge_segments_y : Ny, number of segments that each edge in the Y direction has.
+radius : conductors' radius
+depth : z-coordinate of the grid
+"""
 struct Grid
-    """
-    Strutcture to represent a rectangular grid to be used in specialized routines.
-    This grid has dimensions (Lx*Ly), a total of (before segmentation)
-        nv = (vx*vy)
-    vertices and
-        ne = vy*(vx - 1) + vx*(vy - 1)
-    edges. Each edge is divided into N segments so that the total number of nodes
-    after segmentation is
-        nn = vx*vy + vx*(vy - 1)*(Ny - 1) + vy*(vx - 1)*(Nx - 1)
-    and the total number of segments is
-        ns = Nx*vx*(vy - 1) + Ny*vy*(vx - 1)
-
-    1           vx
-    o---o---o---o  1
-    |   |   |   |
-    o---o---o---o
-    |   |   |   |
-    o---o---o---o  vy
-
-    |<-- Lx --->|
-
-    vertices_x : vx, number of vertices in the X direction;
-    vertices_y : vy, number of vertices in the Y direction;
-    length_x : Lx, total grid length in the X direction;
-    length_y : Ly, total grid length in the Y direction;
-    edge_segments_x : Nx, number of segments that each edge in the X direction has;
-    edge_segments_y : Ny, number of segments that each edge in the Y direction has.
-    radius : conductors' radius
-    depth : z-coordinate of the grid
-    """
     vertices_x::Int
     vertices_y::Int
     length_x::Float64
@@ -460,10 +497,11 @@ struct Grid
     edge_segments_y::Int
     radius::Float64
     depth::Float64
-end;
+end
 
+
+"""Returns the number of segments the Grid has."""
 function num_segments(grid::Grid)
-	""" Return the number of segments the Grid has. """
 	N = grid.edge_segments_x;
     vx = grid.vertices_x;
     M = grid.edge_segments_y;
@@ -471,17 +509,20 @@ function num_segments(grid::Grid)
     return ( N*vy*(vx - 1) + M*vx*(vy - 1) )
 end
 
+
+"""Returns the number of nodes the Grid has."""
 function num_nodes(grid::Grid)
-	""" Return the number of nodes the Grid has. """
 	N = grid.edge_segments_x;
     vx = grid.vertices_x;
     M = grid.edge_segments_y;
     vy = grid.vertices_y;
     return ( vx*vy + vx*(vy - 1)*(M - 1) + vy*(vx - 1)*(N - 1) )
 end
+
+
+"""Generates a list of electrodes and nodes from the Grid."""
 function electrode_grid(grid)
-	""" Generates a list of electrodes and nodes from the Grid. """
-    N = grid.edge_segments_x;
+	N = grid.edge_segments_x;
     Lx = grid.length_x;
     vx = grid.vertices_x;
     lx = Lx/(N*(vx - 1));
@@ -544,14 +585,22 @@ function electrode_grid(grid)
     return electrodes, transpose(nodes)
 end
 
+
+"""
+Makes a column and line permutation copy, depending on the values of
+pc and pl. If both are false, then makes a plain copy.
+	The line i of the matrix is permuted with line (N - i + 1).
+	The column k of the matrix is permuted with column (M - k + 1).
+
+Parameters
+==========
+    dest : destination array (where the copy of the permutated matrix is stored)
+	src : source array (the matrix to be copied and permuted)
+    pc : permute columns?
+	pl : permute lines?
+"""
 function pcl!(dest, src; pc=true, pl=true)
-	"""
-	Makes a column and line permutation copy, depending on the values of
-	pc and pl. If both are false, then makes a plain copy.
-		The line i of the matrix is permuted with line (N - i + 1).
-		The column k of the matrix is permuted with column (M - k + 1).
-	"""
-    n, m = size(src)
+	n, m = size(src)
     n0, m0 = size(dest)
     if n != n0 || m != m0
         msg = "Dimensions of dest and src arrays do not match."
@@ -572,31 +621,44 @@ function pcl!(dest, src; pc=true, pl=true)
     end
 end
 
+
+"""
+Column permutation copy.
+	The column k of the matrix is permuted with column (M - k + 1).
+
+Parameters
+==========
+    dest : destination array (where the copy of the permutated matrix is stored)
+	src : source array (the matrix to be copied and permuted)
+"""
 function pc!(dest, src)
-	"""
-	Column permutation copy.
-		The column k of the matrix is permuted with column (M - k + 1).
-	"""
-    pcl!(dest, src; pc=true, pl=false)
+	pcl!(dest, src; pc=true, pl=false)
 end
 
+
+"""
+Line permutation copy.
+	The line i of the matrix is permuted with line (N - i + 1).
+
+Parameters
+==========
+	dest : destination array (where the copy of the permutated matrix is stored)
+	src : source array (the matrix to be copied and permuted)
+"""
 function pl!(dest, src)
-	"""
-	Line permutation copy.
-		The line i of the matrix is permuted with line (N - i + 1).
-	"""
     pcl!(dest, src; pc=false, pl=true)
 end
 
+
+"""
+Specialized routine to build the impedance matrices ZL and ZT from a Grid
+exploiting its geometric symmetry. The inputs zl and zt are modified.
+"""
 function impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
                           max_eval=typemax(Int), atol=0,
                           rtol=sqrt(eps(Float64)), error_norm=norm,
 						  intg_type=INTG_DOUBLE, initdiv=1, images=false)
-	"""
-	Specialized routine to build the impedance matrices ZL and ZT from a Grid
-	exploiting its geometric symmetry. The inputs zl and zt are modified.
-	"""
-    N = grid.edge_segments_x;
+	N = grid.edge_segments_x;
     Lx = grid.length_x;
     vx = grid.vertices_x;
     lx = Lx/(N*(vx - 1));
@@ -889,40 +951,43 @@ function impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
 				zt[i, k] = one_4pik_ly2*Z[i, k];
 			end
 		end
-    end # @views begin
-end;
+    end # @views
+end
 
+
+"""
+Specialized routine to build the impedance matrices ZL and ZT from a Grid
+exploiting its geometric symmetry.
+"""
 function impedances_grid(grid, gamma, s, mur, kappa, max_eval=typemax(Int),
 						 atol=0, rtol=sqrt(eps(Float64)),
                          error_norm=norm, intg_type=INTG_DOUBLE, initdiv=1,
 						 images=false)
-    """
-	Specialized routine to build the impedance matrices ZL and ZT from a Grid
-	exploiting its geometric symmetry.
-	"""
-	num_seg = num_segments(grid);
+    num_seg = num_segments(grid);
     zl = Array{ComplexF64}(undef, num_seg, num_seg);
     zt = Array{ComplexF64}(undef, num_seg, num_seg);
 	impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
 	                 max_eval, atol, rtol, error_norm,
 					 intg_type, initdiv, images);
     return zl, zt
-end;
+end
 
-## Other symmetry
+
+## Other symmetries
+
+"""
+Calculate the impedance matrices taking advantage of the geometric symmetry
+of a single straight conductor of radius r and total length L divided into
+num_seg segments.
+
+The argument imag_dist is the distance to the images. If zero, then the
+impedances to the "real" segments is calculated.
+"""
 function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
 							  ref_l=1, ref_t=1, imag_dist=0, max_eval=typemax(Int),
 							  atol=0, rtol=sqrt(eps(Float64)),
 							  error_norm=norm, intg_type=INTG_DOUBLE, initdiv=1)
-    """
-	Calculate the impedance matrices taking advantage of the geometric symmetry
-	of a single straight conductor of radius r and total length L divided into
-	num_seg segments.
-
-	The argument imag_dist is the distance to the images. If zero, then the
-	impedances to the "real" segments is calculated.
-	"""
-	len = L/num_seg;
+    len = L/num_seg;
 	iwu_4pi = s*mur*MU0/(FOUR_PI)*ref_l;
     one_4pikl2 = 1.0/(FOUR_PI*kappa*len^2)*ref_t;
 	sender = new_electrode([0, 0, 0], [len, 0, 0], r);
@@ -964,4 +1029,5 @@ function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
 		end
 	end
     return zl, zt
-end;
+end
+
