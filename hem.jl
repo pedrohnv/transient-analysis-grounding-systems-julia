@@ -7,6 +7,153 @@ const FOUR_PI = 12.56637061435917;
 const MU0 = 1.256637061435917e-6; #permeability vac.
 const EPS0 = 8.854187817620e-12; #permittivity vac.
 
+
+## Auxiliary functions
+
+"""
+Laplace transform of the vector y(t).
+Parameters
+----------
+    y : the signal vector to be transformed
+    tmax : last time stamp
+    nt : number of time stamps
+Returns
+-------
+    s : the complex frequency vector
+    L(y) : transformed vector
+"""
+function laplace_transform(y, tmax, nt)
+    c = log(nt^2) / tmax
+    dt = tmax / (nt - 1)
+    dw = 2pi / tmax
+    ns = (nt ÷ 2) + 1
+    s = [c + 1im * dw * (k - 1) for k = 1:ns]
+    v = [dt * exp(-c * (k - 1) * dt) * y[k] for k = 1:nt]
+    return s, rfft(v)
+end
+
+
+"""
+Inverse Laplace transform of the vector y(s).
+Parameters
+----------
+    y : the signal vector to be transformed
+    tmax : last time stamp
+    nt : number of time stamps
+Returns
+-------
+    (L^-1)(y) : transformed vector
+"""
+function invlaplace_transform(y, tmax, nt)
+    c = log(nt^2) / tmax
+    dt = tmax / (nt - 1)
+    v = irfft(y, nt)
+    return [v[i] * exp(c * (i - 1) * dt) / dt for i = 1:nt]
+end
+
+
+"""
+Calculates the soil parameters σ(s) and εr(s) based on the Smith-Longmire model
+as presented in [1].
+[1] D. Cavka, N. Mora, F. Rachidi, A comparison of frequency-dependent soil
+models: application to the analysis of grounding systems, IEEE Trans.
+Electromagn. Compat. 56 (February (1)) (2014) 177–187.
+Parameters
+----------
+    σ0 : value of the soil conductivity in low frequency in S/m
+    s : complex frequency `s = c + jω` of interest in rad/s
+    erinf : parameter ε∞'
+Returns
+-------
+    σ(s) : conductivity in S/m
+    ϵr(s) : relative permitivitty
+"""
+function smith_longmire(s, sigma0, erinf)
+    a = [3.4e6, 2.74e5, 2.58e4, 3.38e3, 5.26e2, 1.33e2, 2.72e1, 1.25e1,
+         4.8e0, 2.17e0, 9.8e-1, 3.92e-1, 1.73e-1]
+    N = length(a)
+    Fdc = (125.0 * sigma0)^0.8312
+    sum_epsr = 0.0
+    sum_sigma = 0.0
+    for i = 1:N
+        F = Fdc * 10^(i - 1)
+        fratio2 = (s / (2im * pi * F))^2
+        den = (1.0 + fratio2)
+        sum_epsr += a[i] / den
+        sum_sigma += a[i] * F * (fratio2 / den)
+    end
+    epsr = erinf + sum_epsr;
+    sigma = sigma0 + 2pi * EPS0 * sum_sigma;
+    return sigma, epsr
+end
+
+
+"""
+Calculates the soil parameters σ(s) and ε(s) based on the Alipio-Visacro soil
+model [1].
+    σ = σ0 + σ0 × h(σ0) × (s / (1 MHz))^g
+    εr = ε∞' / ε0 + tan(π g / 2) × 1e-3 / (2π ε0 (1 MHz)^g) × σ0 × h(σ0) s^(g - 1)
+Recommended values of h(σ0), g and ε∞'/ε0 are given in Fig. 8 of [1]:
+| Results                  |             σ0             |    g   |  ε∞'/ε0  |
+|:-------------------------|:--------------------------:|:------:|:--------:|
+| mean                     |  1.26 × (1000 σ0)^(-0.73)  |  0.54  |    12    |
+| relatively conservative  |  0.95 × (1000 σ0)^(-0.73)  |  0.58  |     8    |
+| conservative             |  0.70 × (1000 σ0)^(-0.73)  |  0.62  |     4    |
+[1] R. Alipio and S. Visacro, "Modeling the Frequency Dependence of Electrical
+Parameters of Soil," in IEEE Transactions on Electromagnetic Compatibility,
+vol. 56, no. 5, pp. 1163-1171, Oct. 2014, doi: 10.1109/TEMC.2014.2313977.
+Parameters
+----------
+    σ0 : value of the soil conductivity in low frequency in S/m
+    s : complex frequency `s = c + jω` of interest in rad/s
+    h : parameters `h(σ0)`
+    g : parameter `g`
+    eps_ratio : parameter `ε∞'/ε0`
+Returns
+-------
+    σ(s) : conductivity in S/m
+    ϵr(s) : relative permitivitty
+"""
+function alipio_soil(sigma0, s, h, g, eps_ratio)
+    f = s / TWO_PI
+    sigma = sigma0 + sigma0 * h * (f/1e6)^g
+    t = tan(π * g / 2) / (TWO_PI * EPS0 * (1e6)^g)
+    epsr = eps_ratio + t * sigma0 * h * f^(g - 1.0)
+    return sigma, epsr
+end
+
+
+"""
+Heidler function to create lightning current waveforms [1]. For parameters'
+values, see e.g. [2]. Calculates
+    i(t) = I0/ξ (t / τ1)^n / (1 + (t / τ1)^n) × exp(-t / τ2)
+where
+    ξ = exp( -(τ1 / τ2) × (n τ2 / τ1)^(1 / n) )
+[1] HEIDLER, Fridolin; CVETIĆ, J. A class of analytical functions to study the
+lightning effects associated with the current front. European transactions on
+electrical power, v. 12, n. 2, p. 141-150, 2002. doi: 10.1002/etep.4450120209
+[2] A. De Conti and S. Visacro, "Analytical Representation of Single- and
+Double-Peaked Lightning Current Waveforms," in IEEE Transactions on
+Electromagnetic Compatibility, vol. 49, no. 2, pp. 448-451, May 2007,
+doi: 10.1109/TEMC.2007.897153.
+Parameters
+----------
+    t : time in seconds
+    imax : current peak I0 in A
+    τ1 : rise time in seconds
+    τ2 : decay time in seconds
+    n : steepness expoent
+Returns
+-------
+    i(t) : current in A
+"""
+function heidler(t, imax, tau1, tau2, n)
+    xi = exp( -(tau1 / tau2) * ((n * tau2 / tau1)^(1.0 / n)) )
+    tt1n = (t / tau1)^n
+    return imax / xi * tt1n / (1 + tt1n) * exp(-t / tau2)
+end
+
+
 ## HEM
 
 """
