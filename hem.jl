@@ -13,11 +13,13 @@ const EPS0 = 8.854187817620e-12; #permittivity vac.
 
 """
 Laplace transform of the vector y(t).
+
 Parameters
 ----------
     y : the signal vector to be transformed
     tmax : last time stamp
     nt : number of time stamps
+
 Returns
 -------
     s : the complex frequency vector
@@ -36,11 +38,13 @@ end
 
 """
 Inverse Laplace transform of the vector y(s).
+
 Parameters
 ----------
     y : the signal vector to be transformed
     tmax : last time stamp
     nt : number of time stamps
+
 Returns
 -------
     (L^-1)(y) : transformed vector
@@ -56,20 +60,23 @@ end
 """
 Calculates the soil parameters σ(s) and εr(s) based on the Smith-Longmire model
 as presented in [1].
+
 [1] D. Cavka, N. Mora, F. Rachidi, A comparison of frequency-dependent soil
 models: application to the analysis of grounding systems, IEEE Trans.
 Electromagn. Compat. 56 (February (1)) (2014) 177–187.
+
 Parameters
 ----------
     σ0 : value of the soil conductivity in low frequency in S/m
     s : complex frequency `s = c + jω` of interest in rad/s
     erinf : parameter ε∞'
+
 Returns
 -------
     σ(s) : conductivity in S/m
     ϵr(s) : relative permitivitty
 """
-function smith_longmire(s, sigma0, erinf)
+function smith_longmire(s, sigma0, erinf=10)
     a = [3.4e6, 2.74e5, 2.58e4, 3.38e3, 5.26e2, 1.33e2, 2.72e1, 1.25e1,
          4.8e0, 2.17e0, 9.8e-1, 3.92e-1, 1.73e-1]
     N = length(a)
@@ -94,15 +101,18 @@ Calculates the soil parameters σ(s) and ε(s) based on the Alipio-Visacro soil
 model [1].
     σ = σ0 + σ0 × h(σ0) × (s / (1 MHz))^g
     εr = ε∞' / ε0 + tan(π g / 2) × 1e-3 / (2π ε0 (1 MHz)^g) × σ0 × h(σ0) s^(g - 1)
+
 Recommended values of h(σ0), g and ε∞'/ε0 are given in Fig. 8 of [1]:
-| Results                  |             σ0             |    g   |  ε∞'/ε0  |
+| Results                  |          h(σ0)             |    g   |  ε∞'/ε0  |
 |:-------------------------|:--------------------------:|:------:|:--------:|
 | mean                     |  1.26 × (1000 σ0)^(-0.73)  |  0.54  |    12    |
 | relatively conservative  |  0.95 × (1000 σ0)^(-0.73)  |  0.58  |     8    |
 | conservative             |  0.70 × (1000 σ0)^(-0.73)  |  0.62  |     4    |
+
 [1] R. Alipio and S. Visacro, "Modeling the Frequency Dependence of Electrical
 Parameters of Soil," in IEEE Transactions on Electromagnetic Compatibility,
 vol. 56, no. 5, pp. 1163-1171, Oct. 2014, doi: 10.1109/TEMC.2014.2313977.
+
 Parameters
 ----------
     σ0 : value of the soil conductivity in low frequency in S/m
@@ -110,12 +120,13 @@ Parameters
     h : parameters `h(σ0)`
     g : parameter `g`
     eps_ratio : parameter `ε∞'/ε0`
+
 Returns
 -------
     σ(s) : conductivity in S/m
     ϵr(s) : relative permitivitty
 """
-function alipio_soil(sigma0, s, h, g, eps_ratio)
+function alipio_soil(sigma0, s, h=1.26*(1000*sigma0)^(-0.73), g=0.54, eps_ratio=12)
     f = s / TWO_PI
     sigma = sigma0 + sigma0 * h * (f/1e6)^g
     t = tan(π * g / 2) / (TWO_PI * EPS0 * (1e6)^g)
@@ -130,13 +141,16 @@ values, see e.g. [2]. Calculates
     i(t) = I0/ξ (t / τ1)^n / (1 + (t / τ1)^n) × exp(-t / τ2)
 where
     ξ = exp( -(τ1 / τ2) × (n τ2 / τ1)^(1 / n) )
+
 [1] HEIDLER, Fridolin; CVETIĆ, J. A class of analytical functions to study the
 lightning effects associated with the current front. European transactions on
 electrical power, v. 12, n. 2, p. 141-150, 2002. doi: 10.1002/etep.4450120209
+
 [2] A. De Conti and S. Visacro, "Analytical Representation of Single- and
 Double-Peaked Lightning Current Waveforms," in IEEE Transactions on
 Electromagnetic Compatibility, vol. 49, no. 2, pp. 448-451, May 2007,
 doi: 10.1109/TEMC.2007.897153.
+
 Parameters
 ----------
     t : time in seconds
@@ -144,6 +158,7 @@ Parameters
     τ1 : rise time in seconds
     τ2 : decay time in seconds
     n : steepness expoent
+
 Returns
 -------
     i(t) : current in A
