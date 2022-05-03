@@ -549,6 +549,11 @@ function impedances_images(electrodes, images, gamma, s, mur, kappa,
 end
 
 
+@enum incidence_type begin
+	NO_INCIDENCE
+	NODE_IS_START
+	NODE_IS_END
+end
 """
 Builds incidence matrices A and B for calculating the nodal admittance
 matrix: YN = AT*inv(ZL)*A + BT*inv(ZT)*B
@@ -558,20 +563,38 @@ function incidence(electrodes, nodes; atol=0, rtol=1e-4)
     nn = size(nodes)[1];
     a = zeros(ComplexF64, (ns,nn));
     b = zeros(ComplexF64, (ns,nn));
-    for k = 1:nn
+	for k = 1:nn
+		no_incidence = true
         for i = 1:ns
+			condition = NO_INCIDENCE
             if isapprox(collect(electrodes[i].start_point), nodes[k,:],
 						atol=atol, rtol=rtol)
                 a[i,k] = 1.0;
                 b[i,k] = 0.5;
+				condition = NODE_IS_START
             elseif isapprox(collect(electrodes[i].end_point), nodes[k,:],
 							atol=atol, rtol=rtol)
                 a[i,k] = -1.0;
                 b[i,k] = 0.5;
+				condition = NODE_IS_END
             end
+			if condition != NO_INCIDENCE
+				no_incidence = false
+			end
         end
+		if no_incidence
+			throw("No electrode is connected to node[$k]")
+		end
     end
-    return a, b
+	x = sum(a)
+	if x != 0
+		throw("incidence matrix A is wrong. sum(A) = $(x) != 0")
+	end
+	x = sum(b)
+	if x != ns
+		throw("incidence matrix B is wrong. sum(B) = $(x) != $(ns)")
+	end
+	return a, b
 end
 
 
@@ -1217,4 +1240,3 @@ function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
 	end
     return zl, zt
 end
-
