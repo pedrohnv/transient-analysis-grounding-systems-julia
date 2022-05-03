@@ -280,6 +280,27 @@ function seg_electrode_list(electrodes, frac)
 end
 
 
+"""Given a list of electrodes, return their unique nodes."""
+function nodes_from_elecs(electrodes)
+    ns = length(electrodes)
+    nodes = rand(2ns, 3)
+    n = 0
+    for e in electrodes
+        i = matchrow(e.start_point, nodes)
+        if i == nothing
+            n += 1
+            nodes[n, :] = e.start_point
+        end
+        i = matchrow(e.end_point, nodes)
+        if i == nothing
+            n += 1
+            nodes[n, :] = e.end_point
+        end
+    end
+    return nodes[1:n, :]
+end
+
+
 """
 Integrand that appears in the double integral between two electrodes.
     `exp(-γ * r) / r`
