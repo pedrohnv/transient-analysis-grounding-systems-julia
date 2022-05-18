@@ -4,6 +4,7 @@ Script to create a set of lines and break them at their intersection points.
 
 Author: Pedro Henrique Nascimento Vieira
 """
+
 using Plots
 using LinearAlgebra
 
@@ -203,6 +204,7 @@ function main(nodes, lmax)
     	fig = plot_lines(seg_lines, nodes)
 	else
     	fig = plot_lines(lines, nodes)
+	end
 	savefig(fig, "grid.png")
     r = 10e-3  # radius
     z = 0.0
