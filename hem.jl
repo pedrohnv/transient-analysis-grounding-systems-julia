@@ -430,6 +430,7 @@ end
 """
 Calculates the impedance matrics ZL and ZT through in-place modification
 of them.
+ZL and ZT are assumed symmetric and only the lower half of them is set.
 """
 function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
                                max_eval=typemax(Int), atol=0,
@@ -460,8 +461,6 @@ function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
                             max_eval, atol, rtol, error_norm, initdiv);
             zl[k,i] = iwu_4pi*intg*cost;
             zt[k,i] = one_4pik/(ls*lr)*intg;
-            zl[i,k] = zl[k,i];
-            zt[i,k] = zt[k,i];
         end
     end
     return zl, zt
@@ -470,6 +469,7 @@ end
 
 """
 Calculates the impedance matrics ZL and ZT.
+ZL and ZT are assumed symmetric and only the lower half of them is set.
 """
 function calculate_impedances(electrodes, gamma, s, mur, kappa,
                               max_eval=typemax(Int), atol=0,
@@ -487,6 +487,7 @@ end
 """
 Adds the effect of the images in the impedance matrics ZL and ZT through
 in-place modification of them.
+ZL and ZT are assumed symmetric and only the lower half of them is used.
 """
 function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
                             ref_l, ref_t, max_eval=typemax(Int), atol=0,
@@ -506,14 +507,15 @@ function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
                             max_eval, atol, rtol, error_norm, initdiv);
             zli[k,i] += iwu_4pi*intg*cost;
             zti[k,i] += one_4pik/(ls*lr)*intg;
-            zli[i,k] = zli[k,i];
-            zti[i,k] = zti[k,i];
         end
     end
 end
 
 
-"""Adds the effect of the images in the impedance matrics ZL and ZT."""
+"""
+Adds the effect of the images in the impedance matrics ZL and ZT.
+ZL and ZT are assumed symmetric and only the lower half of them is used.
+"""
 function impedances_images(electrodes, images, gamma, s, mur, kappa,
                            ref_l, ref_t, max_eval=typemax(Int), atol=0,
                            rtol=sqrt(eps(Float64)), error_norm=norm,
@@ -557,27 +559,33 @@ end
 """
 Builds the Nodal Admittance matrix YN using low level BLAS and LAPACK for
 in-place modification of the inputs YN, ZL and ZT.
+ZL and ZT are assumed symmetric and only the lower half of them is used.
 An auxiliary 'C' matrix of size (num_electrodes, num_nodes) can be provided
 to store the intermediate results.
 """
 function admittance!(yn, zl, zt, a, b, c=nothing)
     ns, nn = size(a);
-    if c == nothing
+    if c === nothing
         c = Array{ComplexF64}(undef, (ns, nn));
     end
-    zl, ipiv, info = LAPACK.getrf!(zl);
-    LAPACK.getri!(zl, ipiv);
-    zt, ipiv, info = LAPACK.getrf!(zt);
-    LAPACK.getri!(zt, ipiv);
-    BLAS.gemm!('N', 'N', complex(1.0), zl, a, complex(0.0), c); # mC = inv(zl)*mA + mC*0
+    uplo = 'L'
+    zl, ipiv, info = LAPACK.sytrf!(uplo, zl);
+    LAPACK.sytri!(uplo, zl, ipiv);
+    zt, ipiv, info = LAPACK.sytrf!(uplo, zt);
+    LAPACK.sytri!(uplo, zt, ipiv);
+    BLAS.symm!(uplo, 'L', complex(1.0), zl, a, complex(0.0), c); # mC = inv(zl)*mA + mC*0
     BLAS.gemm!('T', 'N', complex(1.0), a, c, complex(0.0), yn); # yn = mAT*mC + yn*0
-    BLAS.gemm!('N', 'N', complex(1.0), zt, b, complex(0.0), c); # mC = inv(zt)*mB + mC*0
+    BLAS.symm!(uplo, 'L', complex(1.0), zt, b, complex(0.0), c); # mC = inv(zt)*mB + mC*0
     BLAS.gemm!('T', 'N', complex(1.0), b, c, complex(1.0), yn); # yn = mBT*mC + yn
+    return yn
     return yn
 end
 
 
-""" Builds the Nodal Admittance matrix. """
+"""
+Builds the Nodal Admittance matrix.
+ZL and ZT are assumed symmetric and only the lower half of them is used.
+"""
 function admittance(zl, zt, a, b)
     ns, nn = size(a);
     yn = Array{ComplexF64}(undef, (nn, nn));
@@ -819,6 +827,11 @@ end
 """
 Specialized routine to build the impedance matrices ZL and ZT from a Grid
 exploiting its geometric symmetry. The inputs zl and zt are modified.
+
+See:
+    Vieira, Pedro Henrique N., Rodolfo A. R. Moura, Marco Aurélio O. Schroeder and Antonio C. S. Lima.
+    "Symmetry exploitation to reduce impedance evaluations in grounding grids."
+    International Journal of Electrical Power & Energy Systems 123, 2020.
 """
 function impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
                           max_eval=typemax(Int), atol=0,
@@ -1196,4 +1209,3 @@ function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
     end
     return zl, zt
 end
-

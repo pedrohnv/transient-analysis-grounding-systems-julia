@@ -9,7 +9,28 @@ doi: 10.1109/61.568238
 using Plots
 include("../hem.jl");
 
-function simulate(gs::Int, freq, nfrac, mhem, symmetry)
+"""
+Runs the simulation.
+
+Parameters
+----------
+    gs : size of the square grid, in [m]. Must be an integer multiple of 10
+    freq : array of frequencies of interest
+    Lmax : segments maximum length [m]
+    mhem : use modified HEM formulation? See:
+        Lima, A.C., Moura, R.A., Vieira, P.H., Schroeder, M.A., & Correia de Barros, M.T.
+        "A Computational Improvement in Grounding Systems Transient Analysis."
+        IEEE Transactions on Electromagnetic Compatibility, vol. 62, pp. 765-773, 2020.
+    symmetry : exploit grid symmetry to calculate the impedances faster? See:
+        Vieira, Pedro Henrique N., Rodolfo A. R. Moura, Marco Aurélio O. Schroeder and Antonio C. S. Lima.
+        "Symmetry exploitation to reduce impedance evaluations in grounding grids."
+        International Journal of Electrical Power & Energy Systems 123, 2020.
+
+Returns
+-------
+    zh : Harmonic Impedance
+"""
+function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
     ## Parameters
     # Soil
     mu0 = MU0;
@@ -19,20 +40,18 @@ function simulate(gs::Int, freq, nfrac, mhem, symmetry)
     σ1 = 1.0/1000.0;
     # Frequencies
     nf = length(freq);
-    Ω = 2*pi*freq[nf];
-    λ = (2*pi/Ω)*(1/sqrt( epsr*eps0*mu0/2*(1 + sqrt(1 + (σ1/(Ω*epsr*eps0))^2)) ));
-    frac = λ/nfrac; #for segmentation
+    #Ω = 2*pi*freq[nf];
+    #λ = (2*pi/Ω)*(1/sqrt( epsr*eps0*mu0/2*(1 + sqrt(1 + (σ1/(Ω*epsr*eps0))^2)) ));
 
     # Grid
     r = 7e-3;
     h = -0.5;
-    l = gs;
     n = Int(gs/10) + 1;
-    num_seg = Int( ceil(gs/((n - 1)*frac)) );
-    grid = Grid(n, n, l, l, num_seg, num_seg, r, h);
+    num_seg = Int(cld(gs/10, Lmax))
+    grid = Grid(n, n, gs, gs, num_seg, num_seg, r, h);
     electrodes, nodes = electrode_grid(grid);
-    num_electrodes = ns = length(electrodes)
-    num_nodes = size(nodes)[1]
+    ns = length(electrodes)
+    nn = size(nodes)[1]
     inj_node = matchrow([0.,0.,h], nodes)
 
     #create images
@@ -47,18 +66,6 @@ function simulate(gs::Int, freq, nfrac, mhem, symmetry)
         r = electrodes[i].radius;
         images[i] = new_electrode(start_point, end_point, r);
     end
-
-    mA, mB = incidence(electrodes, nodes);
-    exci = zeros(ComplexF64, num_nodes);
-    exci[inj_node] = 1.0;
-    zh = Array{ComplexF64}(undef, nf);
-    zl = Array{ComplexF64}(undef, (ns,ns));
-    zt = Array{ComplexF64}(undef, (ns,ns));
-    zli = Array{ComplexF64}(undef, (ns,ns));
-    zti = Array{ComplexF64}(undef, (ns,ns));
-    yn = Array{ComplexF64}(undef, (num_nodes, num_nodes));
-    mC = Array{ComplexF64}(undef, (ns, num_nodes));
-
     # Integration Parameters
     max_eval = typemax(Int);
     req_abs_error = 1e-3;
@@ -66,6 +73,18 @@ function simulate(gs::Int, freq, nfrac, mhem, symmetry)
     error_norm = norm;
     if mhem
         intg_type = INTG_MHEM;
+        # calculate distances to avoid repetition
+        rbar = Array{Float64}(undef, (ns,ns))
+        rbari = copy(rbar)
+        for k = 1:ns
+            p1 = collect(electrodes[k].middle_point)
+            for i = k:ns
+                p2 = collect(electrodes[i].middle_point)
+                p3 = collect(images[i].middle_point)
+                rbar[i,k] = norm(p1 - p2)
+                rbari[i,k] = norm(p1 - p3)
+            end
+        end
         if symmetry
             mpotzl, mpotzt = impedances_grid(grid, 0.0, 1.0, 1.0, 1.0, max_eval,
                                              req_abs_error, req_rel_error,
@@ -87,30 +106,48 @@ function simulate(gs::Int, freq, nfrac, mhem, symmetry)
     else
         intg_type = INTG_DOUBLE;
     end
-    ## Frequency loop
+    mA, mB = incidence(electrodes, nodes);
+    zh = Array{ComplexF64}(undef, nf);
+    # Frequency loop, Run in parallel:
+    BLAS.set_num_threads(1)  # this is important! We want to multithread the frequency loop, not the matrix operations
+    zls = [Array{ComplexF64}(undef, (ns,ns)) for t = 1:Threads.nthreads()]
+    zts = [Array{ComplexF64}(undef, (ns,ns)) for t = 1:Threads.nthreads()]
+    ies = [Array{ComplexF64}(undef, nn) for t = 1:Threads.nthreads()]
+    yns = [Array{ComplexF64}(undef, (nn,nn)) for t = 1:Threads.nthreads()]
+    mCs = [Array{ComplexF64}(undef, (ns,nn)) for t = 1:Threads.nthreads()]  # auxiliary matrix
+    if symmetry
+        zlis = [Array{ComplexF64}(undef, (ns,ns)) for t = 1:Threads.nthreads()]
+        ztis = [Array{ComplexF64}(undef, (ns,ns)) for t = 1:Threads.nthreads()]
+    end
+    #Threads.@threads for f = 1:nf
     for f = 1:nf
-        #println("f = ", f)
+        t = Threads.threadid()
+        zl = zls[t]
+        zt = zts[t]
+        ie = ies[t]
+        yn = yns[t]
+        mC = mCs[t]
         jw = 1.0im*TWO_PI*freq[f];
         kappa = σ1 + jw*epsr*eps0;
         k1 = sqrt(jw*mu0*kappa);
         kappa_air = jw*eps0;
         ref_t = (kappa - kappa_air)/(kappa + kappa_air);
-        ref_l = ref_t;
+        ref_l = 1.0;
         if mhem
             for k=1:ns
                 for i=k:ns
-                    rbar = norm(electrodes[i].middle_point - electrodes[k].middle_point);
-                    zl[i,k] = exp(-k1*rbar)*jw*mpotzl[i,k];
-                    zt[i,k] = exp(-k1*rbar)/(kappa)*mpotzt[i,k];
-                    rbar = norm(electrodes[i].middle_point - images[k].middle_point);
-                    zl[i,k] += ref_l*exp(-k1*rbar)*jw*mpotzli[i,k];
-                    zt[i,k] += ref_t*exp(-k1*rbar)/(kappa)*mpotzti[i,k];
-                    zl[k,i] = zl[i,k];
-                    zt[k,i] = zt[i,k];
+                    zl[i,k] = exp(-k1*rbar[i,k])*jw*mpotzl[i,k];
+                    zt[i,k] = exp(-k1*rbar[i,k])/(kappa)*mpotzt[i,k];
+                    zl[i,k] += ref_l*exp(-k1*rbari[i,k])*jw*mpotzli[i,k];
+                    zt[i,k] += ref_t*exp(-k1*rbari[i,k])/(kappa)*mpotzti[i,k];
                 end
             end
         else
             if symmetry
+                zli = zlis[t]
+                zti = ztis[t]
+                zli .= 0.0
+                zti .= 0.0
                 impedances_grid!(zl, zt, grid, k1, jw, mur, kappa, max_eval,
                                  req_abs_error, req_rel_error, error_norm, intg_type);
                 impedances_grid!(zli, zti, grid, k1, jw, mur, kappa, max_eval,
@@ -127,23 +164,28 @@ function simulate(gs::Int, freq, nfrac, mhem, symmetry)
                                    req_rel_error, error_norm, intg_type);
             end
         end
-        exci .= 0.0;
-        exci[inj_node] = 1.0;
+        ie .= 0.0;
+        ie[inj_node] = 1.0;
         admittance!(yn, zl, zt, mA, mB, mC)
-        ldiv!(lu!(yn), exci)
-        zh[f] = exci[inj_node];
+        ldiv!(lu!(yn), ie)
+        zh[f] = ie[inj_node];
     end;
     return zh
-end;
-simulate(10, [1.0], 2, false, true); # force compilation
+end
+
+precompile(simulate, (Int, Vector{Float64}, Float64, Bool, Bool))
+
+if Threads.nthreads() == 1
+    println("Using only 1 thread. Consider launching julia with multiple threads.")
+    println("see:\n  https://docs.julialang.org/en/v1/manual/multi-threading/#man-multithreading")
+end
 
 nf = 100;
 freq = exp10.(range(2, stop=6.4, length=nf)); #logspace
-nfrac = 20;
-mhem = false;
-symmetry = true;
-#gs_arr = [10, 20, 30, 60, 120];
-gs_arr = [10, 20, 30];
+Lmax = 3.5;
+mhem = true;
+symmetry = false;
+gs_arr = [10, 20, 30, 60, 120];
 ng = length(gs_arr);
 zh = Array{ComplexF64}(undef, nf, ng);
 for i = 1:ng
