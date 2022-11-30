@@ -578,7 +578,6 @@ function admittance!(yn, zl, zt, a, b, c=nothing)
     BLAS.symm!(uplo, 'L', complex(1.0), zt, b, complex(0.0), c); # mC = inv(zt)*mB + mC*0
     BLAS.gemm!('T', 'N', complex(1.0), b, c, complex(1.0), yn); # yn = mBT*mC + yn
     return yn
-    return yn
 end
 
 
