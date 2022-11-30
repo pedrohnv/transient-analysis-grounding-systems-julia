@@ -68,8 +68,8 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
     end
     # Integration Parameters
     max_eval = typemax(Int);
-    req_abs_error = 1e-3;
-    req_rel_error = 1e-4;
+    req_abs_error = 1e-4;
+    req_rel_error = 1e-5;
     error_norm = norm;
     if mhem
         intg_type = INTG_MHEM;
@@ -182,7 +182,7 @@ end
 
 nf = 100;
 freq = exp10.(range(2, stop=6.4, length=nf)); #logspace
-Lmax = 3.5;
+Lmax = 1.0;
 mhem = true;
 symmetry = false;
 gs_arr = [10, 20, 30, 60, 120];
@@ -190,7 +190,7 @@ ng = length(gs_arr);
 zh = Array{ComplexF64}(undef, nf, ng);
 for i = 1:ng
     gs = gs_arr[i];
-    @time zh[:,i] = simulate(gs, freq, nfrac, mhem, symmetry);
+    @time zh[:,i] = simulate(gs, freq, Lmax, mhem, symmetry);
 end
 
 begin
