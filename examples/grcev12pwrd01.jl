@@ -47,11 +47,14 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
     r = 7e-3;
     h = -0.5;
     n = Int(gs/10) + 1;
-    num_seg = Int(cld(gs/10, Lmax))
-    grid = Grid(n, n, gs, gs, num_seg, num_seg, r, h);
+    div = Int(ceil(10 / Lmax))
+    grid = Grid(n, n, gs, gs, div, div, r, h);
     electrodes, nodes = electrode_grid(grid);
     ns = length(electrodes)
     nn = size(nodes)[1]
+    println("GS", gs)
+    println("Num. segments = ", ns)
+    println("Num. nodes = ", nn)
     inj_node = matchrow([0.,0.,h], nodes)
 
     #create images
@@ -90,8 +93,8 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
                                              req_abs_error, req_rel_error,
                                              error_norm, intg_type);
             mpotzli, mpotzti = impedances_grid(grid, 0.0, 1.0, 1.0, 1.0, max_eval,
-                                                         req_abs_error, req_rel_error,
-                                                         error_norm, intg_type, 1, true);
+                                              req_abs_error, req_rel_error,
+                                              error_norm, intg_type, 1, true);
         else
             mpotzl, mpotzt = calculate_impedances(electrodes, 0.0, 1.0, 1.0, 1.0,
                                                   max_eval, req_abs_error,
@@ -119,8 +122,7 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
         zlis = [Array{ComplexF64}(undef, (ns,ns)) for t = 1:Threads.nthreads()]
         ztis = [Array{ComplexF64}(undef, (ns,ns)) for t = 1:Threads.nthreads()]
     end
-    #Threads.@threads for f = 1:nf
-    for f = 1:nf
+    Threads.@threads for f = 1:nf
         t = Threads.threadid()
         zl = zls[t]
         zt = zts[t]
@@ -134,12 +136,14 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
         ref_t = (kappa - kappa_air)/(kappa + kappa_air);
         ref_l = 1.0;
         if mhem
+            iwu_4pi = jw * MU0 / (FOUR_PI);
+            one_4pik = 1.0 / (FOUR_PI * kappa);
             for k=1:ns
                 for i=k:ns
-                    zl[i,k] = exp(-k1*rbar[i,k])*jw*mpotzl[i,k];
-                    zt[i,k] = exp(-k1*rbar[i,k])/(kappa)*mpotzt[i,k];
-                    zl[i,k] += ref_l*exp(-k1*rbari[i,k])*jw*mpotzli[i,k];
-                    zt[i,k] += ref_t*exp(-k1*rbari[i,k])/(kappa)*mpotzti[i,k];
+                    zl[i,k] = exp(-k1 * rbar[i,k]) * iwu_4pi * mpotzl[i,k];
+                    zt[i,k] = exp(-k1 * rbar[i,k]) * one_4pik * mpotzt[i,k];
+                    zl[i,k] += ref_l * exp(-k1 * rbari[i,k]) * iwu_4pi * mpotzli[i,k];
+                    zt[i,k] += ref_t * exp(-k1 * rbari[i,k]) * one_4pik * mpotzti[i,k];
                 end
             end
         else
@@ -193,18 +197,21 @@ for i = 1:ng
     @time zh[:,i] = simulate(gs, freq, Lmax, mhem, symmetry);
 end
 
+# Plot
+colors = [:red, :blue, :black, :orange, :purple];
+
 begin
-    plot(xaxis=:log, legend=:topleft, xlabel="f (Hz)", ylabel="|Zh (Ω)|");
+    p = plot(xaxis=:log, legend=:topleft, xlabel="f (Hz)", ylabel="|Zh (Ω)|");
     for i = 1:ng
-        plot!(freq, abs.(zh[:,i]), label=join(["GS ", gs_arr[i]]))
+        plot!(freq, abs.(zh[:,i]), label=join(["GS ", gs_arr[i]]), linecolor=colors[i])
     end
-    plot!()
+    p
 end
 
 begin
-    plot(xaxis=:log, legend=:topleft, xlabel="f (Hz)", ylabel="Phase Zh (deg)");
+    p = plot(xaxis=:log, legend=:topleft, xlabel="f (Hz)", ylabel="Phase Zh (deg)");
     for i = 1:ng
-        plot!(freq, 180/π*angle.(zh[:,i]), label=join(["GS ", gs_arr[i]]))
+        plot!(freq, 180/π*angle.(zh[:,i]), label=join(["GS ", gs_arr[i]]), linecolor=colors[i])
     end
-    plot!()
+    p
 end

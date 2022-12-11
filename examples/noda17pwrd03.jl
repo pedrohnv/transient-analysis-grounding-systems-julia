@@ -131,6 +131,18 @@ function simulate(mhem=true)
     error_norm = norm;
     if mhem
         intg_type = INTG_MHEM;
+        # calculate distances to avoid repetition
+        rbar = Array{Float64}(undef, (ns,ns))
+        rbari = copy(rbar)
+        for k = 1:ns
+            p1 = collect(electrodes[k].middle_point)
+            for i = k:ns
+                p2 = collect(electrodes[i].middle_point)
+                p3 = collect(images[i].middle_point)
+                rbar[i,k] = norm(p1 - p2)
+                rbari[i,k] = norm(p1 - p3)
+            end
+        end
         mpotzl, mpotzt = calculate_impedances(electrodes, 0.0, 1.0, 1.0, 1.0,
                                               max_eval, req_abs_error,
                                               req_rel_error, error_norm,
@@ -152,16 +164,14 @@ function simulate(mhem=true)
         ref_t = (kappa - kappa_cu)/(kappa + kappa_cu);
         ref_l = ref_t;
         if mhem
+            iwu_4pi = jw * MU0 / (FOUR_PI);
+            one_4pik = 1.0 / (FOUR_PI * kappa);
             for k=1:ns
                 for i=k:ns
-                    rbar = norm(electrodes[i].middle_point - electrodes[k].middle_point);
-                    zl[i,k] = exp(-k1*rbar)*jw*mpotzl[i,k];
-                    zt[i,k] = exp(-k1*rbar)/(kappa)*mpotzt[i,k];
-                    rbar = norm(electrodes[i].middle_point - images[k].middle_point);
-                    zl[i,k] += ref_l*exp(-k1*rbar)*jw*mpotzli[i,k];
-                    zt[i,k] += ref_t*exp(-k1*rbar)/(kappa)*mpotzti[i,k];
-                    zl[k,i] = zl[i,k];
-                    zt[k,i] = zt[i,k];
+                    zl[i,k] = exp(-k1 * rbar[i,k]) * iwu_4pi * mpotzl[i,k];
+                    zt[i,k] = exp(-k1 * rbar[i,k]) * one_4pik * mpotzt[i,k];
+                    zl[i,k] += ref_l * exp(-k1 * rbari[i,k]) * iwu_4pi * mpotzli[i,k];
+                    zt[i,k] += ref_t * exp(-k1 * rbari[i,k]) * one_4pik * mpotzti[i,k];
                 end
             end
         else
@@ -204,8 +214,9 @@ function simulate(mhem=true)
     return outv, outi, source, vout_art, iout_art, t
 end;
 
-mhem = false;
+mhem = true;
 outv, outi, source, vout_art, iout_art, t = @time simulate(mhem);
+
 plot([t*1e9, source[:,1]*1e9, vout_art[:,1]], [outv, source[:,2], vout_art[:,2]],
      xlims = (0, 50), ylims = (0, 80), xlabel="t (ns)", ylabel="V (V)",
      label=["calculated" "source" "article"],

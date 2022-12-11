@@ -436,8 +436,13 @@ function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
                                max_eval=typemax(Int), atol=0,
                                rtol=sqrt(eps(Float64)), error_norm=norm,
                                intg_type=INTG_DOUBLE, initdiv=1)
-    iwu_4pi = s*mur*MU0/(FOUR_PI);
-    one_4pik = 1.0/(FOUR_PI*kappa);
+    if (intg_type == INTG_MHEM || intg_type == INTG_NONE)
+        iwu_4pi = 1.0;
+        one_4pik = 1.0;
+    else
+        iwu_4pi = s * mur * MU0 / (FOUR_PI);
+        one_4pik = 1.0 / (FOUR_PI * kappa);
+    end
     ns = length(electrodes);
     for i = 1:ns
         v1 = electrodes[i].end_point - electrodes[i].start_point;
@@ -493,8 +498,13 @@ function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
                             ref_l, ref_t, max_eval=typemax(Int), atol=0,
                             rtol=sqrt(eps(Float64)), error_norm=norm,
                             intg_type=INTG_DOUBLE, initdiv=1)
-    iwu_4pi = s*mur*MU0/(FOUR_PI)*ref_l;
-    one_4pik = 1.0/(FOUR_PI*kappa)*ref_t;
+    if (intg_type == INTG_MHEM || intg_type == INTG_NONE)
+        iwu_4pi = 1.0;
+        one_4pik = 1.0;
+    else
+        iwu_4pi = s * mur * MU0 / (FOUR_PI) * ref_t;
+        one_4pik = 1.0 / (FOUR_PI * kappa) * ref_l;
+    end
     ns = length(electrodes);
     for i = 1:ns
         v1 = electrodes[i].end_point - electrodes[i].start_point;
