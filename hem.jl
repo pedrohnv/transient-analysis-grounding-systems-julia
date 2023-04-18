@@ -5,14 +5,14 @@ using FFTW
 
 const TWO_PI = 6.283185307179586;
 const FOUR_PI = 12.56637061435917;
-const MU0 = 1.256637061435917e-6; #permeability vac.
-const EPS0 = 8.854187817620e-12; #permittivity vac.
+const MU0 = 1.256637061435917e-6;  # permeability vac.
+const EPS0 = 8.854187817620e-12;  # permittivity vac.
 
 
 ## Auxiliary functions
 
 """
-Laplace transform of the vector y(t).
+Laplace transform of the vector `y(t)`.
 
 Parameters
 ----------
@@ -58,7 +58,7 @@ end
 
 
 """
-Calculates the soil parameters σ(s) and εr(s) based on the Smith-Longmire model
+Calculates the soil parameters `σ(s)` and `εr(s)` based on the Smith-Longmire model
 as presented in [1].
 
 [1] D. Cavka, N. Mora, F. Rachidi, A comparison of frequency-dependent soil
@@ -98,19 +98,17 @@ end
 
 """
 Calculates the soil parameters σ(s) and ε(s) based on the Alipio-Visacro soil
-model [1].
+model [1].  
+    `σ = σ0 + σ0 × h(σ0) × (s / (1 MHz))^g`  
+    `εr = ε∞' / ε0 + tan(π g / 2) × 1e-3 / (2π ε0 (1 MHz)^g) × σ0 × h(σ0) s^(g - 1)`
 
-    σ = σ0 + σ0 × h(σ0) × (s / (1 MHz))^g
+Recommended values of `h(σ0)`, g and ε∞'/ε0 are given in Fig. 8 of [1]:
 
-    εr = ε∞' / ε0 + tan(π g / 2) × 1e-3 / (2π ε0 (1 MHz)^g) × σ0 × h(σ0) s^(g - 1)
-
-Recommended values of h(σ0), g and ε∞'/ε0 are given in Fig. 8 of [1]:
-
-| Results                  |          h(σ0)             |    g   |  ε∞'/ε0  |
-|:-------------------------|:--------------------------:|:------:|:--------:|
-| mean                     |  1.26 × (1000 σ0)^(-0.73)  |  0.54  |    12    |
-| relatively conservative  |  0.95 × (1000 σ0)^(-0.73)  |  0.58  |     8    |
-| conservative             |  0.70 × (1000 σ0)^(-0.73)  |  0.62  |     4    |
+    | Results                 |          h(σ0)             |    g   |  ε∞'/ε0  |
+    |:------------------------|:--------------------------:|:------:|:--------:|
+    | mean                    |  1.26 × (1000 σ0)^(-0.73)  |  0.54  |    12    |
+    | relatively conservative |  0.95 × (1000 σ0)^(-0.73)  |  0.58  |     8    |
+    | conservative            |  0.70 × (1000 σ0)^(-0.73)  |  0.62  |     4    |
 
 [1] R. Alipio and S. Visacro, "Modeling the Frequency Dependence of Electrical
 Parameters of Soil," in IEEE Transactions on Electromagnetic Compatibility,
@@ -140,10 +138,10 @@ end
 
 """
 Heidler function to create lightning current waveforms [1]. For parameters'
-values, see e.g. [2]. Calculates
-    i(t) = I0/ξ (t / τ1)^n / (1 + (t / τ1)^n) × exp(-t / τ2)
-where
-    ξ = exp( -(τ1 / τ2) × (n τ2 / τ1)^(1 / n) )
+values, see e.g. [2]. Calculates  
+    `i(t) = I0/ξ (t / τ1)^n / (1 + (t / τ1)^n) × exp(-t / τ2)`
+where  
+    `ξ = exp( -(τ1 / τ2) × (n τ2 / τ1)^(1 / n) )`
 
 [1] HEIDLER, Fridolin; CVETIĆ, J. A class of analytical functions to study the
 lightning effects associated with the current front. European transactions on
@@ -176,13 +174,11 @@ end
 ## HEM
 
 """
-Defines which integration (and simplification thereof) to do.
+Defines which integration (and simplification thereof) to do.  
 INTG_NONE: no integration is done, it is instead calculated as the distance
-    between the middle points of the conductors.
-INTG_DOUBLE: performs the normal double integration along each conductor
-    segment.
-INTG_SINGLE: performs the normal integration along only a single conductor
-    segment.
+    between the middle points of the conductors.  
+INTG_DOUBLE: performs the normal double integration along each conductor segment.  
+INTG_SINGLE: performs the normal integration along only a single conductor segment.  
 INTG_MHEM: calculates the integral of the modified HEM.
 """
 @enum Integration_type begin
@@ -195,7 +191,7 @@ INTG_MHEM: calculates the integral of the modified HEM.
 end
 
 
-""" Defines a conductor segment. """
+"""Defines a conductor segment."""
 mutable struct Electrode
     start_point::Array{Float64,1}
     end_point::Array{Float64,1}
@@ -205,14 +201,14 @@ mutable struct Electrode
 end
 
 
-""" Creates a conductor segment. """
+"""Creates a conductor segment."""
 function new_electrode(start_point, end_point, radius)
     return Electrode(start_point, end_point, (start_point + end_point)/2.0,
                      norm(start_point - end_point), radius)
 end
 
 
-""" Segments a conductor."""
+"""Segments a conductor."""
 function segment_electrode(electrode::Electrode, num_segments::Int)
     nn = num_segments + 1;
     nodes = Array{Float64}(undef, nn, 3); # FIXME transpose all nodes
@@ -245,9 +241,8 @@ end
 
 
 """
-Segments a list of conductors such that they end up having at most 'L/frac'
-length.
-Return a list of the segmented conductors and their nodes.
+Segments a list of conductors such that they end up having at most `L/frac`
+length. Returns a list of the segmented conductors and their nodes.
 """
 function seg_electrode_list(electrodes, frac)
     num_elec = 0; #after segmentation
@@ -281,7 +276,7 @@ end
 
 
 """
-Integrand that appears in the double integral between two electrodes.
+Integrand that appears in the double integral between two electrodes.  
     `exp(-γ * r) / r`
 """
 function integrand_double(sender::Electrode, receiver::Electrode, gamma, t)
@@ -294,7 +289,7 @@ end
 
 """
 Integrand that appears in the single integral between a sender electrode and
-the middle point of a receiver electrode.
+the middle point of a receiver electrode. 
     `exp(-γ * r) / r`
 """
 function integrand_single(sender::Electrode, receiver::Electrode, gamma, t)
@@ -314,7 +309,7 @@ function logNf(sender::Electrode, receiver::Electrode, gamma, t)
 end
 
 
-"""Integral formula for when γ*r -> 0 and sender -> receiver."""
+"""Integral formula for when `γ*r -> 0` and sender -> receiver."""
 function self_integral(sender)
     L = sender.length;
     b = sender.radius;
@@ -323,7 +318,7 @@ function self_integral(sender)
 end
 
 
-"""Calculates 'log( abs(x) )' limiting the result, if needed."""
+"""Calculates `log( abs(x) )` limiting the result, if needed."""
 function logabs(x)
     logabs_eps = -36.04365338911715; # = log(eps())
     absx = abs(x)
@@ -428,9 +423,8 @@ end
 
 
 """
-Calculates the impedance matrics ZL and ZT through in-place modification
-of them.
-ZL and ZT are assumed symmetric and only the lower half of them is set.
+Calculates the impedance matrics `ZL` and `ZT` through in-place modification
+of them. `ZL` and `ZT` are assumed symmetric and only the lower half of them is set.
 """
 function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
                                max_eval=typemax(Int), atol=0,
@@ -473,8 +467,8 @@ end
 
 
 """
-Calculates the impedance matrics ZL and ZT.
-ZL and ZT are assumed symmetric and only the lower half of them is set.
+Calculates the impedance matrics `ZL` and `ZT`.
+`ZL` and `ZT` are assumed symmetric and only the lower half of them is set.
 """
 function calculate_impedances(electrodes, gamma, s, mur, kappa,
                               max_eval=typemax(Int), atol=0,
@@ -490,9 +484,9 @@ end
 
 
 """
-Adds the effect of the images in the impedance matrics ZL and ZT through
+Adds the effect of the images in the impedance matrics `ZL` and `ZT` through
 in-place modification of them.
-ZL and ZT are assumed symmetric and only the lower half of them is used.
+`ZL` and `ZT` are assumed symmetric and only the lower half of them is used.
 """
 function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
                             ref_l, ref_t, max_eval=typemax(Int), atol=0,
@@ -523,8 +517,8 @@ end
 
 
 """
-Adds the effect of the images in the impedance matrics ZL and ZT.
-ZL and ZT are assumed symmetric and only the lower half of them is used.
+Adds the effect of the images in the impedance matrics `ZL` and `ZT`.
+`ZL` and `ZT` are assumed symmetric and only the lower half of them is used.
 """
 function impedances_images(electrodes, images, gamma, s, mur, kappa,
                            ref_l, ref_t, max_eval=typemax(Int), atol=0,
@@ -541,8 +535,8 @@ end
 
 
 """
-Builds incidence matrices A and B for calculating the nodal admittance
-matrix: YN = AT*inv(ZL)*A + BT*inv(ZT)*B
+Builds incidence matrices A and B for calculating the nodal admittance matrix:  
+`YN = AT*inv(ZL)*A + BT*inv(ZT)*B`
 """
 function incidence(electrodes, nodes; atol=0, rtol=1e-4)
     ns = length(electrodes);
@@ -567,10 +561,10 @@ end
 
 
 """
-Builds the Nodal Admittance matrix YN using low level BLAS and LAPACK for
-in-place modification of the inputs YN, ZL and ZT.
-ZL and ZT are assumed symmetric and only the lower half of them is used.
-An auxiliary 'C' matrix of size (num_electrodes, num_nodes) can be provided
+Builds the Nodal Admittance matrix `YN` using low level BLAS and LAPACK for
+in-place modification of the inputs `YN`, `ZL` and `ZT`.
+`ZL` and `ZT` are assumed symmetric and only the lower half of them is used.
+An auxiliary `C` matrix of size `(num_electrodes, num_nodes)` can be provided
 to store the intermediate results.
 """
 function admittance!(yn, zl, zt, a, b, c=nothing)
@@ -593,7 +587,7 @@ end
 
 """
 Builds the Nodal Admittance matrix.
-ZL and ZT are assumed symmetric and only the lower half of them is used.
+`ZL` and `ZT` are assumed symmetric and only the lower half of them is used.
 """
 function admittance(zl, zt, a, b)
     ns, nn = size(a);
@@ -604,7 +598,7 @@ end
 
 """
 Builds the Global Immittance matrix using low level BLAS and LAPACK for
-in-place modification of the input wg.
+in-place modification of the input `wg`.
 """
 function immittance!(wg, zl, zt, a, b, ye=nothing)
     ns, nn = size(a);
@@ -643,33 +637,34 @@ end
 
 """
 Strutcture to represent a rectangular grid to be used in specialized routines.
-This grid has dimensions (Lx*Ly), a total of (before segmentation)
-    nv = (vx*vy)
+This grid has dimensions `(Lx*Ly)`, a total of (before segmentation)
+    `nv = (vx*vy)`
 vertices and
-    ne = vy*(vx - 1) + vx*(vy - 1)
+    `ne = vy*(vx - 1) + vx*(vy - 1)`
 edges. Each edge is divided into N segments so that the total number of nodes
 after segmentation is
-    nn = vx*vy + vx*(vy - 1)*(Ny - 1) + vy*(vx - 1)*(Nx - 1)
+    `nn = vx*vy + vx*(vy - 1)*(Ny - 1) + vy*(vx - 1)*(Nx - 1)`
 and the total number of segments is
-    ns = Nx*vx*(vy - 1) + Ny*vy*(vx - 1)
+    `ns = Nx*vx*(vy - 1) + Ny*vy*(vx - 1)`
 
-1           vx
-o---o---o---o  1
-|   |   |   |
-o---o---o---o
-|   |   |   |
-o---o---o---o  vy
-
-|<-- Lx --->|
-
-vertices_x : vx, number of vertices in the X direction;
-vertices_y : vy, number of vertices in the Y direction;
-length_x : Lx, total grid length in the X direction;
-length_y : Ly, total grid length in the Y direction;
-edge_segments_x : Nx, number of segments that each edge in the X direction has;
-edge_segments_y : Ny, number of segments that each edge in the Y direction has.
-radius : conductors' radius
-depth : z-coordinate of the grid
+    1           vx
+    o---o---o---o  1
+    |   |   |   |
+    o---o---o---o
+    |   |   |   |
+    o---o---o---o  vy
+    |<-- Lx --->|
+    
+Attributes
+----------
+    vertices_x : vx, number of vertices in the X direction;
+    vertices_y : vy, number of vertices in the Y direction;
+    length_x : Lx, total grid length in the X direction;
+    length_y : Ly, total grid length in the Y direction;
+    edge_segments_x : Nx, number of segments that each edge in the X direction has;
+    edge_segments_y : Ny, number of segments that each edge in the Y direction has.
+    radius : conductors' radius
+    depth : z-coordinate of the grid
 """
 struct Grid
     vertices_x::Int
@@ -776,7 +771,7 @@ pc and pl. If both are false, then makes a plain copy.
     The column k of the matrix is permuted with column (M - k + 1).
 
 Parameters
-==========
+----------
     dest : destination array (where the copy of the permutated matrix is stored)
     src : source array (the matrix to be copied and permuted)
     pc : permute columns?
@@ -807,10 +802,10 @@ end
 
 """
 Column permutation copy.
-    The column k of the matrix is permuted with column (M - k + 1).
+    The column `k` of the matrix is permuted with column `(M - k + 1)`.
 
 Parameters
-==========
+----------
     dest : destination array (where the copy of the permutated matrix is stored)
     src : source array (the matrix to be copied and permuted)
 """
@@ -821,10 +816,10 @@ end
 
 """
 Line permutation copy.
-    The line i of the matrix is permuted with line (N - i + 1).
+    The line `i` of the matrix is permuted with line `(N - i + 1)`.
 
 Parameters
-==========
+----------
     dest : destination array (where the copy of the permutated matrix is stored)
     src : source array (the matrix to be copied and permuted)
 """
@@ -834,8 +829,8 @@ end
 
 
 """
-Specialized routine to build the impedance matrices ZL and ZT from a Grid
-exploiting its geometric symmetry. The inputs zl and zt are modified.
+Specialized routine to build the impedance matrices `ZL` and `ZT` from a Grid
+exploiting its geometric symmetry. The inputs `zl` and `zt` are modified.
 
 See:
     Vieira, Pedro Henrique N., Rodolfo A. R. Moura, Marco Aurélio O. Schroeder and Antonio C. S. Lima.
@@ -1144,7 +1139,7 @@ end
 
 
 """
-Specialized routine to build the impedance matrices ZL and ZT from a Grid
+Specialized routine to build the impedance matrices `ZL` and `ZT` from a Grid
 exploiting its geometric symmetry.
 """
 function impedances_grid(grid, gamma, s, mur, kappa, max_eval=typemax(Int),
@@ -1165,10 +1160,10 @@ end
 
 """
 Calculate the impedance matrices taking advantage of the geometric symmetry
-of a single straight conductor of radius r and total length L divided into
-num_seg segments.
+of a single straight conductor of radius r and total length `L` divided into
+`num_seg` segments.
 
-The argument imag_dist is the distance to the images. If zero, then the
+The argument `imag_dist` is the distance to the images. If zero, then the
 impedances to the "real" segments is calculated.
 """
 function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
