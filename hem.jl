@@ -241,21 +241,21 @@ end
 
 
 """
-Segments a list of conductors such that they end up having at most `L/frac`
+Segments a list of conductors such that they end up having at most `Lmax`
 length. Returns a list of the segmented conductors and their nodes.
 """
-function seg_electrode_list(electrodes, frac)
+function seg_electrode_list(electrodes, Lmax)
     num_elec = 0; #after segmentation
     for i=1:length(electrodes)
         #TODO store in array to avoid repeated calculations
-        num_elec += Int(ceil(electrodes[i].length/frac));
+        num_elec += Int(ceil(electrodes[i].length/Lmax));
     end
     elecs = Array{Electrode}(undef, num_elec);
     nodes = zeros(Float64, (2*num_elec, 3));
     e = 1;
     nodes = [];
     for i = 1:length(electrodes)
-        ns = Int(ceil(electrodes[i].length/frac));
+        ns = Int(ceil(electrodes[i].length/Lmax));
         new_elecs, new_nodes = segment_electrode(electrodes[i], ns);
         for k=1:ns
             elecs[e] = new_elecs[k];
@@ -577,10 +577,10 @@ function admittance!(yn, zl, zt, a, b, c=nothing)
     LAPACK.sytri!(uplo, zl, ipiv);
     zt, ipiv, info = LAPACK.sytrf!(uplo, zt);
     LAPACK.sytri!(uplo, zt, ipiv);
-    BLAS.symm!(uplo, 'L', complex(1.0), zl, a, complex(0.0), c); # mC = inv(zl)*mA + mC*0
-    BLAS.gemm!('T', 'N', complex(1.0), a, c, complex(0.0), yn); # yn = mAT*mC + yn*0
-    BLAS.symm!(uplo, 'L', complex(1.0), zt, b, complex(0.0), c); # mC = inv(zt)*mB + mC*0
-    BLAS.gemm!('T', 'N', complex(1.0), b, c, complex(1.0), yn); # yn = mBT*mC + yn
+    BLAS.symm!(uplo, 'L', complex(1.0), zl, a, complex(0.0), c)  # mC := inv(zl)*mA + mC*0
+    BLAS.gemm!('T', 'N', complex(1.0), a, c, complex(0.0), yn)  # yn := mAT*mC + yn*0
+    BLAS.symm!(uplo, 'L', complex(1.0), zt, b, complex(0.0), c)  # mC := inv(zt)*mB + mC*0
+    BLAS.gemm!('T', 'N', complex(1.0), b, c, complex(1.0), yn)  # yn := mBT*mC + yn
     return yn
 end
 
@@ -1212,4 +1212,67 @@ function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
         end
     end
     return zl, zt
+end
+
+# Field computation
+
+"""Calculates the vector magnetic potential A."""
+function magnetic_potential(point, electrodes, il, gamma, mur)
+    fake = new_electrode(point, point, 1)
+    va = zeros(ComplexF64, 3)
+    for i in eachindex(electrodes)
+        integ = integral(electrodes[i], fake, gamma, INTG_MHEM)
+        dx = electrodes[i].end_point - electrodes[i].start_point
+        L = norm(dx)
+        va .+= integ * il[i] / electrodes[i].length .* dx / L * mur * MU0 / (4.0 * pi)
+    end
+    return va
+end
+
+
+"""Calculates the electric field at a point. Uses mHEM aproximation."""
+function electric_field_mhem(point, electrodes, il, it, gamma, s, mur, kappa)
+    efield = zeros(ComplexF64, 3)
+    fake = new_electrode(point, point, 1)
+    for i in eachindex(electrodes)
+        #integ = integral(electrodes[i], fake, gamma, INTG_MHEM)
+        #rmean = norm(fake.middle_point - electrodes[i].middle_point)
+        #ec = integ * (1.0 + gamma * rmean) * it[i] / (4.0 * pi * kappa)
+        integ = integral(electrodes[i], fake, gamma, INTG_DOUBLE)
+        ec = integ * (1.0 + gamma * rmean) * it[i] / (4.0 * pi * kappa)
+        # EA should be multiplied by the electrode length L, but it is then
+        # divided L to calculate the cosine with each axis. Hence, omitted.
+        ea = integ * (-s) * mur * MU0 * il[i] / (4.0 * pi)
+        for k = 1:3
+            cosk = (electrodes[i].middle_point[k] - point[k]) / rmean
+            efield[k] += ec * cosk
+            cosl = (electrodes[i].end_point[k] - electrodes[i].start_point[k])
+            efield[k] += ea * cosl
+        end
+    end
+    return efield
+end
+
+
+"""Calculates the electric field at a point. Uses mHEM aproximation."""
+function electric_field(point, electrodes, il, it, gamma, s, mur, kappa)
+    efield = zeros(ComplexF64, 3)
+    for i in eachindex(electrodes)
+        function elec_field_integrand(t)
+            p2 = electrodes[i].end_point
+            p1 = electrodes[i].start_point
+            dv = point - (t[1] * (p2 - p1) + p1)
+            r = norm(dv)
+            if r < eps()
+                r = eps()
+            end
+            return (1 + gamma * r) * exp(-gamma * r) / r^3.0 .* dv
+        end
+        integ, error = hcubature(elec_field_integrand, [0.0], [1.0])
+        efield .+= integ * it[i] / (4.0 * pi * kappa)
+        if abs(s) > 0.0
+            efield .+= (-s) .* magnetic_potential(point, electrodes, il, gamma, mur)
+        end
+    end
+    return efield
 end
