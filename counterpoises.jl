@@ -1,13 +1,4 @@
-#=
-Reproducing the results in [1] of a time domain surge response of different
-counterpoise configurations.
-
-[1] Vitor Rocha de Almeida Rego Lima.
-Desempenho de linhas de transmissão frente a descargas atmosféricas:
-desenvolvimento de ferramenta computacional e análise de medidas mitigatórias
-não convencionais em regiões com restrições ambientais.
-2020. Universidade Federal do Rio de Janeiro (UFRJ).
-=#
+#= Functions to generate different transmission line counterpoise configurations. =#
 using Plots
 include("hem.jl")
 
@@ -118,6 +109,7 @@ function conventional2(L, s1, s2, s3, s4, h, r)
     ]
     return [wires1; wires2]
 end
+
 
 """
 Build an electrode list of a narrow counterpoise.
