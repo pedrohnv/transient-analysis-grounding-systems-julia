@@ -143,12 +143,12 @@ function simulate(mhem=true)
                 rbari[i,k] = norm(p1 - p3)
             end
         end
-        mpotzl, mpotzt = calculate_impedances(electrodes, 0.0, 1.0, 1.0, 1.0,
+        mpotzl, mpotzt = calculate_impedances(electrodes, 0.0, 1.0, 1.0, 1.0;
                                               max_eval, req_abs_error,
                                               req_rel_error, error_norm,
                                               intg_type);
         mpotzli, mpotzti = impedances_images(electrodes, images,
-                                             0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                                             0.0, 1.0, 1.0, 1.0, 1.0, 1.0;
                                              max_eval, req_abs_error,
                                              req_rel_error, error_norm,
                                              intg_type);
@@ -175,11 +175,11 @@ function simulate(mhem=true)
                 end
             end
         else
-            calculate_impedances!(zl, zt, electrodes, k1, jw, mur, kappa,
+            calculate_impedances!(zl, zt, electrodes, k1, jw, mur, kappa;
                                   max_eval, req_abs_error, req_rel_error,
                                   error_norm, intg_type);
             impedances_images!(zl, zt, electrodes, images, k1, jw, mur, kappa,
-                               ref_l, ref_t, max_eval, req_abs_error,
+                               ref_l, ref_t; max_eval, req_abs_error,
                                req_rel_error, error_norm, intg_type);
         end
         exci .= 0.0;

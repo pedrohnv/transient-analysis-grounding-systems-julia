@@ -65,7 +65,7 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
                        -electrodes[i].start_point[3]];
         end_point = [electrodes[i].end_point[1],
                      electrodes[i].end_point[2],
-                         -electrodes[i].end_point[3]];
+                     -electrodes[i].end_point[3]];
         r = electrodes[i].radius;
         images[i] = new_electrode(start_point, end_point, r);
     end
@@ -96,12 +96,12 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
                                               req_abs_error, req_rel_error,
                                               error_norm, intg_type, 1, true);
         else
-            mpotzl, mpotzt = calculate_impedances(electrodes, 0.0, 1.0, 1.0, 1.0,
+            mpotzl, mpotzt = calculate_impedances(electrodes, 0.0, 1.0, 1.0, 1.0;
                                                   max_eval, req_abs_error,
                                                   req_rel_error, error_norm,
                                                   intg_type);
             mpotzli, mpotzti = impedances_images(electrodes, images,
-                                                 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                                                 0.0, 1.0, 1.0, 1.0, 1.0, 1.0;
                                                  max_eval, req_abs_error,
                                                  req_rel_error, error_norm,
                                                  intg_type);
@@ -160,11 +160,11 @@ function simulate(gs::Int, freq, Lmax, mhem::Bool, symmetry::Bool)
                 zl .+= ref_l.*zli;
                 zt .+= ref_t.*zti;
             else
-                calculate_impedances!(zl, zt, electrodes, k1, jw, mur, kappa,
+                calculate_impedances!(zl, zt, electrodes, k1, jw, mur, kappa;
                                       max_eval, req_abs_error, req_rel_error,
                                       error_norm, intg_type);
                 impedances_images!(zl, zt, electrodes, images, k1, jw, mur, kappa,
-                                   ref_l, ref_t, max_eval, req_abs_error,
+                                   ref_l, ref_t; max_eval, req_abs_error,
                                    req_rel_error, error_norm, intg_type);
             end
         end
@@ -187,9 +187,9 @@ end
 nf = 100;
 freq = exp10.(range(2, stop=6.4, length=nf)); #logspace
 Lmax = 1.0;
-mhem = true;
+mhem = false;
 symmetry = false;
-gs_arr = [10, 20, 30, 60, 120];
+gs_arr = [10, 20, 30]#, 60, 120];
 ng = length(gs_arr);
 zh = Array{ComplexF64}(undef, nf, ng);
 for i = 1:ng
@@ -205,7 +205,7 @@ begin
     for i = 1:ng
         plot!(freq, abs.(zh[:,i]), label=join(["GS ", gs_arr[i]]), linecolor=colors[i])
     end
-    p
+    display(p)
 end
 
 begin
@@ -213,5 +213,5 @@ begin
     for i = 1:ng
         plot!(freq, 180/π*angle.(zh[:,i]), label=join(["GS ", gs_arr[i]]), linecolor=colors[i])
     end
-    p
+    display(p)
 end
