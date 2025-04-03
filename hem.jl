@@ -1,5 +1,5 @@
-using LinearAlgebra;
-using HCubature;
+using LinearAlgebra
+using HCubature
 using FFTW
 
 
@@ -76,7 +76,7 @@ Returns
     σ(s) : conductivity in S/m
     ϵr(s) : relative permitivitty
 """
-function smith_longmire(s, sigma0, erinf=10)
+function smith_longmire(s, sigma0, erinf=5)
     a = [3.4e6, 2.74e5, 2.58e4, 3.38e3, 5.26e2, 1.33e2, 2.72e1, 1.25e1,
          4.8e0, 2.17e0, 9.8e-1, 3.92e-1, 1.73e-1]
     N = length(a)
@@ -318,6 +318,14 @@ function self_integral(sender)
 end
 
 
+"""Calculates the internal impedance of a solid wire with conductivity `sigma_c`
+at complex frequency `s`."""
+function internal_impedance(s, radius; length = 1.0, sigma_c = 1.7241e-8)
+    w2 = radius * sqrt(s * MU0 * sigma_c)
+    return s * MU0 / (2pi * w2) * besselkx(0, w2) / besselkx(1, w2) * length
+end
+
+
 """Calculates `log( abs(x) )` limiting the result, if needed."""
 function logabs(x)
     logabs_eps = -36.04365338911715; # = log(eps())
@@ -386,7 +394,7 @@ end
 
 
 """Performs the integral between two electrodes with customizable parameters."""
-function integral(sender::Electrode, receiver::Electrode, gamma,
+function integral(sender::Electrode, receiver::Electrode, gamma;
                   intg_type=INTG_DOUBLE, max_eval=typemax(Int),
                   atol=0, rtol=sqrt(eps(Float64)), error_norm=norm, initdiv=1)
     ls = sender.length;
@@ -426,7 +434,7 @@ end
 Calculates the impedance matrics `ZL` and `ZT` through in-place modification
 of them. `ZL` and `ZT` are assumed symmetric and only the lower half of them is set.
 """
-function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
+function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa;
                                max_eval=typemax(Int), atol=0,
                                rtol=sqrt(eps(Float64)), error_norm=norm,
                                intg_type=INTG_DOUBLE, initdiv=1)
@@ -445,7 +453,7 @@ function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
             r = electrodes[i].radius;
             sender = new_electrode([0, 0, 0], [ls, 0, 0], r);
             receiver = new_electrode([0, r, 0], [ls, r, 0], r);
-            intg = integral(sender, receiver, gamma, intg_type,
+            intg = integral(sender, receiver, gamma; intg_type,
                             max_eval, atol, rtol, error_norm, initdiv);
         else
             intg = self_integral(electrodes[i]);
@@ -456,7 +464,7 @@ function calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
             v2 = electrodes[k].end_point - electrodes[k].start_point;
             lr = electrodes[k].length;
             cost = dot(v1,v2)/(ls*lr);
-            intg = integral(electrodes[i], electrodes[k], gamma, intg_type,
+            intg = integral(electrodes[i], electrodes[k], gamma; intg_type,
                             max_eval, atol, rtol, error_norm, initdiv);
             zl[k,i] = iwu_4pi*intg*cost;
             zt[k,i] = one_4pik/(ls*lr)*intg;
@@ -470,14 +478,14 @@ end
 Calculates the impedance matrics `ZL` and `ZT`.
 `ZL` and `ZT` are assumed symmetric and only the lower half of them is set.
 """
-function calculate_impedances(electrodes, gamma, s, mur, kappa,
+function calculate_impedances(electrodes, gamma, s, mur, kappa;
                               max_eval=typemax(Int), atol=0,
                               rtol=sqrt(eps(Float64)), error_norm=norm,
                               intg_type=INTG_DOUBLE, initdiv=1)
     ns = length(electrodes);
     zl = Array{ComplexF64}(undef, (ns,ns));
     zt = Array{ComplexF64}(undef, (ns,ns));
-    calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa,
+    calculate_impedances!(zl, zt, electrodes, gamma, s, mur, kappa;
                           max_eval, atol, rtol, error_norm, intg_type, initdiv);
     return zl, zt
 end
@@ -489,7 +497,7 @@ in-place modification of them.
 `ZL` and `ZT` are assumed symmetric and only the lower half of them is used.
 """
 function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
-                            ref_l, ref_t, max_eval=typemax(Int), atol=0,
+                            ref_l, ref_t; max_eval=typemax(Int), atol=0,
                             rtol=sqrt(eps(Float64)), error_norm=norm,
                             intg_type=INTG_DOUBLE, initdiv=1)
     if (intg_type == INTG_MHEM || intg_type == INTG_NONE)
@@ -507,7 +515,7 @@ function impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
             v2 = electrodes[k].end_point - electrodes[k].start_point;
             lr = electrodes[k].length;
             cost = dot(v1,v2)/(ls*lr);
-            intg = integral(electrodes[i], images[k], gamma, intg_type,
+            intg = integral(electrodes[i], images[k], gamma; intg_type,
                             max_eval, atol, rtol, error_norm, initdiv);
             zli[k,i] += iwu_4pi*intg*cost;
             zti[k,i] += one_4pik/(ls*lr)*intg;
@@ -521,14 +529,14 @@ Adds the effect of the images in the impedance matrics `ZL` and `ZT`.
 `ZL` and `ZT` are assumed symmetric and only the lower half of them is used.
 """
 function impedances_images(electrodes, images, gamma, s, mur, kappa,
-                           ref_l, ref_t, max_eval=typemax(Int), atol=0,
+                           ref_l, ref_t; max_eval=typemax(Int), atol=0,
                            rtol=sqrt(eps(Float64)), error_norm=norm,
                            intg_type=INTG_DOUBLE, initdiv=1)
     ns = length(electrodes);
     zli = zeros(ComplexF64, ns, ns);
     zti = zeros(ComplexF64, ns, ns);
     impedances_images!(zli, zti, electrodes, images, gamma, s, mur, kappa,
-                       ref_l, ref_t, max_eval, atol, rtol,
+                       ref_l, ref_t; max_eval, atol, rtol,
                        error_norm, intg_type, initdiv);
     return zli, zti
 end
@@ -569,7 +577,7 @@ to store the intermediate results.
 """
 function admittance!(yn, zl, zt, a, b, c=nothing)
     ns, nn = size(a);
-    if c === nothing
+    if isnothing(c)
         c = Array{ComplexF64}(undef, (ns, nn));
     end
     uplo = 'L'
@@ -581,7 +589,7 @@ function admittance!(yn, zl, zt, a, b, c=nothing)
     BLAS.gemm!('T', 'N', complex(1.0), a, c, complex(0.0), yn)  # yn := mAT*mC + yn*0
     BLAS.symm!(uplo, 'L', complex(1.0), zt, b, complex(0.0), c)  # mC := inv(zt)*mB + mC*0
     BLAS.gemm!('T', 'N', complex(1.0), b, c, complex(1.0), yn)  # yn := mBT*mC + yn
-    return yn
+    return (yn .+ transpose(yn)) ./ 2.0
 end
 
 
@@ -597,28 +605,26 @@ end
 
 
 """
-Builds the Global Immittance matrix using low level BLAS and LAPACK for
-in-place modification of the input `wg`.
+Builds the Global Immittance matrix with in-place modification of the input `wg`.
 """
 function immittance!(wg, zl, zt, a, b, ye=nothing)
     ns, nn = size(a);
-    m0 = zeros(ComplexF64, ns, ns);
-    if ye == nothing
-        ye = view(m0, 1:nn, 1:nn);
+    if isnothing(ye)
+        ye = zeros(nn, nn);
     end
     p1 = nn + 1;
     p2 = nn + ns;
     p3 = 2ns + nn;
     @views begin
-        wg[1:nn, 1:nn] = ye;
-        wg[p1:p2, 1:nn] = -a;
-        wg[(p2+1):p3, 1:nn] = -b;
-        wg[1:nn, p1:p2] = transpose(a);
-        wg[p1:p2, p1:p2] = zl;
-        wg[(p2+1):p3, p1:p2] = m0;
-        wg[1:nn, (p2+1):p3] = transpose(b);
-        wg[p1:p2, (p2+1):p3] = m0;
-        wg[(p2+1):p3, (p2+1):p3] = zt;
+        wg[1:nn, 1:nn] .= ye;
+        wg[p1:p2, 1:nn] .= a;
+        wg[(p2+1):p3, 1:nn] .= b;
+        wg[1:nn, p1:p2] .= transpose(a);
+        wg[p1:p2, p1:p2] .= Symmetric(-zl, :L);
+        wg[(p2+1):p3, p1:p2] .= 0;
+        wg[1:nn, (p2+1):p3] .= transpose(b);
+        wg[p1:p2, (p2+1):p3] .= 0;
+        wg[(p2+1):p3, (p2+1):p3] .= Symmetric(-zt, :L);
     end
     return wg
 end
@@ -878,7 +884,7 @@ function impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
                     receiver.end_point[1] = x0 + lx;
                     receiver.middle_point[1] = x0 + lx/2;
                     id2 = seg_horizontal(h2, n2, k2);
-                    Z[1, id2] = integral(sender, receiver, gamma, intg_type,
+                    Z[1, id2] = integral(sender, receiver, gamma; intg_type,
                                          max_eval, atol, rtol, error_norm, initdiv);
                     Z[id2, 1] = Z[1, id2];
                 end # for k2
@@ -968,7 +974,7 @@ function impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
                             receiver.start_point[2] = y0;
                             receiver.end_point[2] = y0 + ly;
                             receiver.middle_point[2] = y0 + ly/2;
-                            Z[k1, id2] = integral(sender, receiver, gamma,
+                            Z[k1, id2] = integral(sender, receiver, gamma;
                                                   intg_type, max_eval,
                                                   atol, rtol, error_norm, initdiv);
                         end # if
@@ -1040,7 +1046,7 @@ function impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
                         receiver.middle_point[2] = y0 + ly/2;
                         id1 = num_seg_horizontal + 1;
                         id2 = seg_vertical(m2, g2, k2);
-                        Z[id1, id2] = integral(sender, receiver, gamma, intg_type,
+                        Z[id1, id2] = integral(sender, receiver, gamma; intg_type,
                                                max_eval, atol, rtol, error_norm,
                                                initdiv);
                         Z[id2, id1] = Z[id1, id2];
@@ -1149,7 +1155,7 @@ function impedances_grid(grid, gamma, s, mur, kappa, max_eval=typemax(Int),
     num_seg = num_segments(grid);
     zl = Array{ComplexF64}(undef, num_seg, num_seg);
     zt = Array{ComplexF64}(undef, num_seg, num_seg);
-    impedances_grid!(zl, zt, grid, gamma, s, mur, kappa,
+    impedances_grid!(zl, zt, grid, gamma, s, mur, kappa;
                      max_eval, atol, rtol, error_norm,
                      intg_type, initdiv, images);
     return zl, zt
@@ -1178,7 +1184,7 @@ function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
     if imag_dist < r
         if intg_type == INTG_DOUBLE
             receiver = new_electrode([0, r, 0], [len, r, 0], r);
-            intg = integral(sender, receiver, gamma, intg_type,
+            intg = integral(sender, receiver, gamma; intg_type,
                             max_eval, atol, rtol, error_norm, initdiv);
             #L = sender.length;
             #b = sender.radius;
@@ -1189,7 +1195,7 @@ function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
             intg = self_integral(sender);
         end
     else
-        intg = integral(sender, receiver, gamma, intg_type, max_eval,
+        intg = integral(sender, receiver, gamma; intg_type, max_eval,
                         atol, rtol, error_norm, initdiv);
     end
     zl[1,1] = iwu_4pi*intg;
@@ -1198,7 +1204,7 @@ function impedances_straight!(zl, zt, L, r, num_seg, gamma, s, mur, kappa,
         receiver.end_point[1] += len;
         receiver.start_point[1] += len;
         receiver.middle_point[1] += len;
-        intg = integral(sender, receiver, gamma, intg_type, max_eval,
+        intg = integral(sender, receiver, gamma; intg_type, max_eval,
                         atol, rtol, error_norm, initdiv);
         zl[k,1] = iwu_4pi*intg;
         zt[k,1] = one_4pikl2*intg;
